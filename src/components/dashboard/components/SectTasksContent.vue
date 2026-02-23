@@ -117,6 +117,109 @@ const canGenerate = computed(() => !!playerSectInfo.value?.宗门名称 && !!gam
 
 const hasTasks = computed(() => getSectTasks().length > 0);
 
+const REALM_ORDER_HINTS: Array<{ token: string; rank: number }> = [
+  { token: '凡人', rank: 0 },
+  { token: '练气', rank: 1 },
+  { token: '筑基', rank: 2 },
+  { token: '金丹', rank: 3 },
+  { token: '元婴', rank: 4 },
+  { token: '化神', rank: 5 },
+  { token: '炼虚', rank: 6 },
+  { token: '合体', rank: 7 },
+  { token: '大乘', rank: 8 },
+  { token: '渡劫', rank: 9 },
+  { token: '真仙', rank: 10 },
+  { token: '金仙', rank: 11 },
+  { token: '太乙', rank: 12 },
+  { token: '大罗', rank: 13 },
+  { token: '淬体', rank: 1 },
+  { token: '凝气', rank: 2 },
+  { token: '通玄', rank: 3 },
+  { token: '化真', rank: 4 },
+  { token: '破虚', rank: 5 },
+  { token: '登天', rank: 6 },
+];
+
+const getRealmOrderRank = (realmName: string): number => {
+  const raw = String(realmName || '').trim();
+  if (!raw) return -1;
+  let best = -1;
+  for (const item of REALM_ORDER_HINTS) {
+    if (raw.includes(item.token)) best = Math.max(best, item.rank);
+  }
+  return best;
+};
+
+function collectTaskMapContext(targetRealm: string) {
+  const realmCol = gameStateStore.realmMapCollection;
+  const target = String(targetRealm || '').trim();
+
+  const firstLevel: Array<{ 名称: string; 来源境界?: string; 描述?: string }> = [];
+  const secondLevel: Array<{ 名称: string; 类型?: string; 来源境界?: string; 描述?: string }> = [];
+  const firstSeen = new Set<string>();
+  const secondSeen = new Set<string>();
+  const sourceRealms: string[] = [];
+
+  const pushFromWorld = (wi: any, sourceRealm?: string) => {
+    if (!wi || typeof wi !== 'object') return;
+
+    (wi?.大陆信息 ?? []).forEach((c: any) => {
+      if (firstLevel.length >= 80) return;
+      const name = String(c?.名称 || c?.name || '').trim();
+      if (!name || firstSeen.has(name)) return;
+      firstSeen.add(name);
+      firstLevel.push({
+        名称: name,
+        来源境界: sourceRealm,
+        描述: String(c?.描述 || c?.description || c?.特点 || '').trim() || undefined,
+      });
+    });
+
+    (wi?.地点信息 ?? []).forEach((l: any) => {
+      if (secondLevel.length >= 180) return;
+      const name = String(l?.名称 || l?.name || '').trim();
+      if (!name || secondSeen.has(name)) return;
+      secondSeen.add(name);
+      secondLevel.push({
+        名称: name,
+        类型: String(l?.类型 || l?.type || '').trim() || undefined,
+        来源境界: sourceRealm,
+        描述: String(l?.描述 || l?.description || '').trim() || undefined,
+      });
+    });
+  };
+
+  if (realmCol && typeof realmCol === 'object' && Object.keys(realmCol).length > 0) {
+    const realmKeys = Object.keys(realmCol);
+    const targetRank = getRealmOrderRank(target);
+    const targetIndex = realmKeys.indexOf(target);
+
+    const shouldInclude = (realmKey: string, idx: number): boolean => {
+      if (!target) return true;
+      const rank = getRealmOrderRank(realmKey);
+
+      // 优先使用语义境界排序；unknown rank 不纳入，避免把高境界地图误带入
+      if (targetRank >= 0) return rank >= 0 && rank <= targetRank;
+
+      // 其次按地图集顺序兜底（索引<=当前）
+      if (targetIndex >= 0) return idx <= targetIndex;
+
+      // 无法判断时仅包含同名
+      return realmKey === target;
+    };
+
+    realmKeys.forEach((realmKey, idx) => {
+      if (!shouldInclude(realmKey, idx)) return;
+      sourceRealms.push(realmKey);
+      pushFromWorld((realmCol as any)[realmKey], realmKey);
+    });
+  } else {
+    pushFromWorld(gameStateStore.worldInfo, undefined);
+  }
+
+  return { firstLevel, secondLevel, sourceRealms };
+}
+
 type SectTask = {
   任务ID: string;
   任务名称: string;
@@ -295,6 +398,13 @@ async function generateSectTasks() {
       const realm = attrs.境界 as any;
       return `${realm.名称 || ''}${realm.阶段 || ''}`.trim() || '未知';
     })();
+    const taskMapContext = collectTaskMapContext(playerRealm);
+    const firstLevelLines = taskMapContext.firstLevel
+      .map((v) => `- ${v.名称}${v.来源境界 ? `（来源：${v.来源境界}）` : ''}${v.描述 ? `：${v.描述}` : ''}`)
+      .slice(0, 80);
+    const secondLevelLines = taskMapContext.secondLevel
+      .map((v) => `- ${v.名称}${v.类型 ? ` [${v.类型}]` : ''}${v.来源境界 ? `（来源：${v.来源境界}）` : ''}${v.描述 ? `：${v.描述}` : ''}`)
+      .slice(0, 180);
 
     const prompt = `
 # 任务：生成【宗门任务】列表（单次功能请求）
@@ -331,10 +441,22 @@ async function generateSectTasks() {
   - 玩家当前境界：${playerRealm}
   - 低难度任务应是该境界能轻松完成的，高难度任务需努力才能完成，极难度是极限挑战
   - 禁止生成远超玩家当前境界能力范围的任务（如练气期玩家不应承接元婴级任务）
+- 【地图关联约束（重要）】：
+  - 优先使用“已知二级地点”作为任务发生地（巡逻、护送、采集、除魔等都应落在这些地点或其周边）
+  - 如确需新地点，必须与“已知一级地点（大陆/灵境）”建立明确隶属关系，并在任务描述中写清层级
+  - 不要凭空脱离世界框架生成地点名
 - text 字段写简短提示即可
 
 ## 世界背景
 ${JSON.stringify(worldContext).slice(0, 800)}
+
+## 地图活动范围（境界1~当前境界）
+- 当前境界：${playerRealm}
+- 地图来源境界：${taskMapContext.sourceRealms.join('、') || '当前世界地图'}
+- 已知一级地点（大陆/灵境）：
+${firstLevelLines.join('\n') || '- 暂无'}
+- 已知二级地点（宗门/城镇/秘境/地标）：
+${secondLevelLines.join('\n') || '- 暂无'}
 
 ## 宗门信息
 - 玩家职位：${playerPosition.value}

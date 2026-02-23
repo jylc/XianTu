@@ -102,7 +102,7 @@ export async function generateLocationPlacement(
     const maxX = Math.max(...xs).toFixed(0);
     const minY = Math.min(...ys).toFixed(0);
     const maxY = Math.max(...ys).toFixed(0);
-    boundsHint = `大陆坐标范围：x ∈ [${minX}, ${maxX}]，y ∈ [${minY}, ${maxY}]`;
+    boundsHint = `【重要约束】该地点位于「${continentName}」，坐标必须严格限制在其范围内：x ∈ [${minX}, ${maxX}]，y ∈ [${minY}, ${maxY}]。严禁超出此边界，否则在世界地图上会显示在其他大陆！`;
   } else {
     boundsHint = `地图总范围：x ∈ [1000, ${mapSize.width - 1000}]，y ∈ [1000, ${mapSize.height - 1000}]`;
   }
@@ -172,13 +172,38 @@ ${existingList || '暂无'}
       return { success: false, error: 'AI 返回数据格式错误，缺少坐标' };
     }
 
+    let finalX = Math.round(raw.坐标.x);
+    let finalY = Math.round(raw.坐标.y);
+
+    if (continentBounds && continentBounds.length > 0) {
+      const xs = continentBounds.map((p) => p.x);
+      const ys = continentBounds.map((p) => p.y);
+      const minX = Math.min(...xs);
+      const maxX = Math.max(...xs);
+      const minY = Math.min(...ys);
+      const maxY = Math.max(...ys);
+
+      // Clamp coordinates to continent bounding box if out of bounds
+      const marginX = Math.max(10, (maxX - minX) * 0.05);
+      const marginY = Math.max(10, (maxY - minY) * 0.05);
+
+      if (finalX < minX) finalX = minX + marginX + Math.random() * marginX;
+      if (finalX > maxX) finalX = maxX - marginX - Math.random() * marginX;
+      if (finalY < minY) finalY = minY + marginY + Math.random() * marginY;
+      if (finalY > maxY) finalY = maxY - marginY - Math.random() * marginY;
+    } else {
+      // Fallback: clamp to world map boundaries
+      finalX = Math.max(100, Math.min(mapSize.width - 100, finalX));
+      finalY = Math.max(100, Math.min(mapSize.height - 100, finalY));
+    }
+
     return {
       success: true,
       location: {
         名称: locationName,
         类型: raw.类型 || '城镇坊市',
         描述: raw.描述 || '',
-        坐标: { x: Math.round(raw.坐标.x), y: Math.round(raw.坐标.y) },
+        坐标: { x: Math.round(finalX), y: Math.round(finalY) },
         所属大陆: continentName,
       },
     };

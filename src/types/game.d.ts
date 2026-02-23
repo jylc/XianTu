@@ -776,6 +776,8 @@ export interface WorldLocation {
   开放状态: '开放' | '限制' | '封闭' | '未发现' | string;
   相关势力?: string[];
   特殊功能?: string[];
+  /** 【境界地图集】该地点所属的境界地图名称（与 世界.地图集 的 key 对应） */
+  targetRealm?: string;
 }
 
 /** 世界生成信息 */
@@ -797,6 +799,8 @@ export interface WorldInfo {
   地图配置?: WorldMapConfig; // 新增地图配置
   经济?: EconomyState; // 可选：经济/货币波动（用于动态汇率、地区差异）
   区域地图?: import('./gameMap').RegionMap[]; // 【区域地图】按需生成，存储已生成的区域地图
+  /** 【境界地图集】该 WorldInfo 所属的境界名称（如 "练气期"），仅在地图集模式下使用 */
+  targetRealm?: string;
   // 从 WorldGenerationInfo 扁平化
   生成时间: string;
   世界背景: string;

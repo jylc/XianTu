@@ -15,6 +15,15 @@ import type {
 } from '@/types/gameMap';
 import { REGION_MAP_SCALE_SIZE } from '@/types/gameMap';
 
+export interface RegionNpcLocationHint {
+  /** NPC 名称 */
+  npcName: string;
+  /** NPC 的完整位置路径（原始文本） */
+  fullPath: string;
+  /** 从路径中提取出的区域内建筑名（叶子节点） */
+  buildingName: string;
+}
+
 // ─── 规模推断 ──────────────────────────────────────────────────────────────
 
 /**
@@ -79,8 +88,9 @@ async function buildPrompt(params: {
   locationDesc: string;
   factionInfo?: string;
   gridSize: number;
+  npcLocationHints?: RegionNpcLocationHint[];
 }): Promise<string> {
-  const { locationName, locationType, locationDesc, factionInfo, gridSize } = params;
+  const { locationName, locationType, locationDesc, factionInfo, gridSize, npcLocationHints } = params;
 
   // 读取用户自定义提示词（基础规则部分）
   const customBase = await promptStorage.get('regionMapGeneration');
@@ -94,7 +104,33 @@ async function buildPrompt(params: {
 描述：${locationDesc}${factionInfo ? `\n相关势力：${factionInfo}` : ''}
 格子大小：${gridSize}×${gridSize}（gridX/gridY 均不能超过 ${gridSize}）`;
 
-  return `${baseRule}\n${locationContext}`;
+  // NPC 位置线索（只接收调用方已过滤为“当前地点匹配”的线索）
+  const buildingStats = new Map<string, { count: number; npcNames: Set<string> }>();
+  const hintList = (npcLocationHints ?? []).slice(0, 40);
+  hintList.forEach((hint) => {
+    const buildingName = String(hint.buildingName || '').trim();
+    if (!buildingName) return;
+    const stat = buildingStats.get(buildingName) || { count: 0, npcNames: new Set<string>() };
+    stat.count += 1;
+    stat.npcNames.add(String(hint.npcName || '').trim() || '未知NPC');
+    buildingStats.set(buildingName, stat);
+  });
+
+  const sortedBuildings = Array.from(buildingStats.entries())
+    .sort((a, b) => b[1].count - a[1].count)
+    .slice(0, 12);
+
+  const npcHintSection = sortedBuildings.length > 0
+    ? `\n【NPC 位置线索（已过滤为当前地点）】
+- 下列线索仅来自“路径第二段=当前地点（${locationName}）”的 NPC，其它地点线索已排除，无需参考。
+- 请优先在区域地图中包含这些建筑（同义可合并）：
+${sortedBuildings
+  .map(([name, stat]) => `  - ${name}（线索${stat.count}条，涉及NPC：${Array.from(stat.npcNames).slice(0, 4).join('、')}）`)
+  .join('\n')}
+- 若格子数量不足，可保留高频建筑，低频建筑可并入功能区描述。`
+    : '\n【NPC 位置线索】当前没有与该地点匹配的 NPC 建筑线索，可按地点信息自由设计。';
+
+  return `${baseRule}\n${locationContext}\n${npcHintSection}`;
 }
 
 function getExpectedBuildingCount(gridSize: number): string {
@@ -243,6 +279,8 @@ export interface RegionMapGenParams {
   locationType?: string;
   locationDesc?: string;
   factionInfo?: string;
+  /** NPC 在当前地点的建筑级位置线索（如 炼丹房、主峰、藏经阁） */
+  npcLocationHints?: RegionNpcLocationHint[];
   level?: string;
   /** 强制指定规模，不自动推断 */
   forceScale?: RegionMapScale;
@@ -270,6 +308,7 @@ export async function generateRegionMap(params: RegionMapGenParams): Promise<Reg
     locationType = '地点',
     locationDesc = '',
     factionInfo,
+    npcLocationHints,
     level,
     forceScale,
     onStreamChunk,
@@ -305,7 +344,14 @@ export async function generateRegionMap(params: RegionMapGenParams): Promise<Reg
   }
 
   // 2. 构建提示词
-  const prompt = await buildPrompt({ locationName, locationType, locationDesc, factionInfo, gridSize });
+  const prompt = await buildPrompt({
+    locationName,
+    locationType,
+    locationDesc,
+    factionInfo,
+    gridSize,
+    npcLocationHints,
+  });
 
   // 3. 调用 AI
   try {

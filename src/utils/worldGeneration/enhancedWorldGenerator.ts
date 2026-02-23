@@ -4,7 +4,7 @@
  */
 
 import { getTavernHelper, isTavernEnv } from '../tavern';
-import { EnhancedWorldPromptBuilder, type WorldPromptConfig } from './enhancedWorldPrompts';
+import { EnhancedWorldPromptBuilder, type WorldPromptConfig, RealmMapPromptBuilder, type RealmMapPromptConfig } from './enhancedWorldPrompts';
 import type { WorldInfo } from '@/types/game.d';
 import { calculateSectData, type SectCalculationData } from './sectDataCalculator';
 import { WorldMapConfig } from '@/types/worldMap';
@@ -495,4 +495,170 @@ export class EnhancedWorldGenerator {
 
     result.isValid = result.errors.length === 0;
   }
+}
+
+// ─── 境界地图集 - 独立生成入口（新模式）────────────────────────────────────────
+
+/** 境界地图生成配置 */
+export interface RealmMapGenConfig extends RealmMapPromptConfig {
+  maxRetries?: number;
+  onStreamChunk?: (chunk: string) => void;
+}
+
+/** 境界地图生成结果 */
+export interface RealmMapGenResult {
+  success: boolean;
+  worldInfo?: WorldInfo;
+  errors?: string[];
+}
+
+const parseLocationPath = (desc: string): string[] => String(desc || '')
+  .split(/[·\-—→>＞/]/)
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+const extractNpcWorldLocationName = (locationDesc: string): string => {
+  const parts = parseLocationPath(locationDesc);
+  if (parts.length >= 2) return parts[1];
+  if (parts.length === 1) return parts[0];
+  return '';
+};
+
+/**
+ * 生成一张境界专属世界地图（境界地图集模式专用）。
+ * 复用现有 AI 调用和 JSON 解析逻辑，不依赖 EnhancedWorldGenerator 的数量配置。
+ */
+export async function generateRealmMap(config: RealmMapGenConfig): Promise<RealmMapGenResult> {
+  const maxRetries = config.maxRetries ?? 2;
+  const prompt = RealmMapPromptBuilder.buildPrompt(config);
+  const helper = isTavernEnv() ? getTavernHelper() : null;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      let rawText = '';
+
+      if (helper) {
+        const response = await helper.generateRaw({
+          ordered_prompts: [
+            { role: 'user', content: prompt },
+            { role: 'user', content: '请直接输出 JSON，不要任何解释文字。' },
+          ],
+          should_stream: !!config.onStreamChunk,
+          usageType: 'world_generation',
+          overrides: { world_info_before: '', world_info_after: '' },
+          onStreamChunk: (chunk: string) => { if (config.onStreamChunk) config.onStreamChunk(chunk); },
+        });
+        rawText = typeof response === 'string' ? response : (response as any)?.text ?? '';
+      } else {
+        rawText = await aiService.generateRaw({
+          ordered_prompts: [
+            { role: 'user', content: prompt },
+            { role: 'user', content: '请直接输出 JSON，不要任何解释文字。' },
+          ],
+          should_stream: !!config.onStreamChunk,
+          usageType: 'world_generation',
+          onStreamChunk: config.onStreamChunk,
+        });
+      }
+
+      rawText = rawText.replace(/<thinking>[\s\S]*?<\/thinking>/gi, '').trim();
+      rawText = rawText.replace(/<thinking>[\s\S]*/gi, '').trim();
+
+      const raw = parseJsonSmart<Record<string, any>>(rawText);
+      if (!raw || typeof raw !== 'object') throw new Error('AI 返回的 JSON 格式无效');
+
+      // 新境界地图应生成“新增地点”，不应与低境界已知地点重名
+      const knownLocationNameSet = new Set(
+        (config.historicalLocations ?? [])
+          .map((l: any) => String(l?.名称 || l?.name || '').trim())
+          .filter(Boolean)
+      );
+      const duplicatedKnownNames = ((raw.locations ?? []) as any[])
+        .map((l: any) => String(l?.name ?? l?.名称 ?? '').trim())
+        .filter((name: string) => !!name && knownLocationNameSet.has(name));
+      if (duplicatedKnownNames.length > 0) {
+        const uniq = Array.from(new Set(duplicatedKnownNames)).slice(0, 8);
+        throw new Error(`生成结果包含低境界已知地点（需生成新增地点）：${uniq.join('、')}`);
+      }
+
+      // 同境界 NPC 世界地点（字段2）必须被本次 locations 覆盖，否则重试
+      const requiredNpcLocationNames = Array.from(new Set(
+        (config.npcHints ?? [])
+          .map((n: any) => extractNpcWorldLocationName(String(n?.当前位置 || '')))
+          .filter(Boolean)
+      ));
+      if (requiredNpcLocationNames.length > 0) {
+        const generatedLocationNameSet = new Set(
+          ((raw.locations ?? []) as any[])
+            .map((l: any) => String(l?.name ?? l?.名称 ?? '').trim())
+            .filter(Boolean)
+        );
+        const missingNpcLocationNames = requiredNpcLocationNames.filter(
+          (name) => !generatedLocationNameSet.has(name)
+        );
+        if (missingNpcLocationNames.length > 0) {
+          throw new Error(
+            `生成结果未覆盖同境界 NPC 所在地点：${missingNpcLocationNames.slice(0, 12).join('、')}`
+          );
+        }
+      }
+
+      const continents = (raw.continents ?? []).map((c: any) => ({
+        名称: c.name ?? c.名称 ?? '未命名大洲',
+        描述: c.description ?? c.描述 ?? '',
+        气候: c.climate ?? c.气候 ?? '',
+        地理特征: c.terrain_features ?? c.地理特征 ?? [],
+        大洲边界: c.continent_bounds ?? c.大洲边界 ?? [],
+        主要势力: c.main_factions ?? c.主要势力 ?? [],
+      }));
+
+      const factions = (raw.factions ?? []).map((f: any) => ({
+        名称: f.name ?? f.名称 ?? '未命名势力',
+        类型: f.type ?? f.类型 ?? '修仙宗门',
+        等级: f.level ?? f.等级 ?? '三流',
+        描述: f.description ?? f.描述 ?? '',
+        特色: f.feature ?? f.特色 ?? '',
+        位置: f.location ?? f.位置 ?? '',
+        与玩家关系: f.playerRelation ?? f.与玩家关系 ?? '中立',
+        可否加入: f.canJoin ?? f.可否加入 ?? false,
+        领导层: f.leaderRealm ? { 宗主: f.leader ?? '未知', 宗主修为: f.leaderRealm, 最强修为: f.leaderRealm } : undefined,
+      }));
+
+      const locations = (raw.locations ?? []).map((l: any) => ({
+        名称: l.name ?? l.名称 ?? '未命名地点',
+        类型: l.type ?? l.类型 ?? '地点',
+        位置: l.position ?? l.位置 ?? '',
+        coordinates: l.coordinates ?? undefined,
+        描述: l.description ?? l.描述 ?? '',
+        特色: l.feature ?? l.特色 ?? '',
+        安全等级: l.safetyLevel ?? l.安全等级 ?? '较安全',
+        开放状态: l.openStatus ?? l.开放状态 ?? '开放',
+        相关势力: l.relatedFactions ?? l.相关势力 ?? [],
+        targetRealm: config.playerRealm,
+      }));
+
+      const worldInfo: WorldInfo = {
+        世界名称: raw.worldName ?? raw.世界名称 ?? config.worldName ?? '修仙界',
+        大陆信息: continents,
+        势力信息: factions,
+        地点信息: locations,
+        区域地图: [],
+        生成时间: new Date().toISOString(),
+        世界背景: raw.worldBackground ?? raw.世界背景 ?? config.worldBackground ?? '',
+        世界纪元: raw.worldEra ?? raw.世界纪元 ?? config.worldEra ?? '',
+        特殊设定: raw.specialSettings ?? raw.特殊设定 ?? [],
+        版本: '3.0-realm',
+        targetRealm: config.playerRealm,
+      };
+
+      return { success: true, worldInfo };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[generateRealmMap] 第 ${attempt + 1} 次尝试失败:`, msg);
+      if (attempt === maxRetries) return { success: false, errors: [msg] };
+      await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+    }
+  }
+
+  return { success: false, errors: ['超出最大重试次数'] };
 }

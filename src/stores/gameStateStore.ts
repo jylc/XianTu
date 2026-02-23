@@ -126,6 +126,8 @@ interface GameState {
    */
   relationshipMatrix: any | null;
   worldInfo: WorldInfo | null;
+  /** 【境界地图集】开关开启时使用， key 为境界名称，如 "练气期" */
+  realmMapCollection: Record<string, WorldInfo> | null;
   sectSystem: SectSystemV2 | null;
   sectMemberInfo: SectMemberInfo | null;
   memory: Memory | null;
@@ -179,6 +181,7 @@ export const useGameStateStore = defineStore('gameState', {
     relationships: null,
     relationshipMatrix: null,
     worldInfo: null,
+    realmMapCollection: null,
     sectSystem: null,
     sectMemberInfo: null,
     memory: null,
@@ -309,6 +312,10 @@ export const useGameStateStore = defineStore('gameState', {
       const relationships: Record<string, NpcProfile> | null = v3?.社交?.关系 ? deepCopy(v3.社交.关系) : null;
       const relationshipMatrix = normalizeRelationshipMatrixV3(v3?.社交?.关系矩阵, Object.keys(relationships || {}));
       const worldInfo: WorldInfo | null = v3?.世界?.信息 ? deepCopy(v3.世界.信息) : null;
+      const realmMapCollection: Record<string, WorldInfo> | null =
+        v3?.世界?.地图集 && typeof v3.世界.地图集 === 'object' && !Array.isArray(v3.世界.地图集)
+          ? deepCopy(v3.世界.地图集)
+          : null;
       const sectSystem: SectSystemV2 | null = v3?.社交?.宗门 ? deepCopy(v3.社交.宗门) : null;
       let sectMemberInfo: SectMemberInfo | null = (v3?.社交?.宗门 as any)?.成员信息 ? deepCopy((v3.社交.宗门 as any).成员信息) : null;
 
@@ -388,6 +395,7 @@ export const useGameStateStore = defineStore('gameState', {
       this.relationships = relationships;
       this.relationshipMatrix = relationshipMatrix;
       this.worldInfo = worldInfo;
+      this.realmMapCollection = realmMapCollection;
       this.sectSystem = sectSystem;
       this.sectMemberInfo = sectMemberInfo;
       this.memory = memory;
@@ -578,7 +586,11 @@ export const useGameStateStore = defineStore('gameState', {
           事件: this.eventSystem,
           记忆: this.memory,
         },
-        世界: { 信息: this.worldInfo ?? {}, 状态: {} },
+        世界: {
+          信息: this.worldInfo ?? {},
+          ...(this.realmMapCollection ? { 地图集: this.realmMapCollection } : {}),
+          状态: {},
+        },
         系统: {
           配置: this.systemConfig ?? {},
           设置: settings,
@@ -688,6 +700,7 @@ export const useGameStateStore = defineStore('gameState', {
       this.equipment = null;
       this.relationships = null;
       this.worldInfo = null;
+      this.realmMapCollection = null;
       this.sectSystem = null;
       this.sectMemberInfo = null;
       this.memory = null;
@@ -1014,6 +1027,42 @@ export const useGameStateStore = defineStore('gameState', {
       }
       worldInfo.地点信息.push(location);
       console.log(`[gameStateStore] ✅ 已添加新地点: ${location.名称} (${location.坐标.x}, ${location.坐标.y})`);
+    },
+
+    /**
+     * 将新地点添加到境界地图集中指定境界的地图（境界分层地图模式专用）
+     */
+    addWorldLocationToRealm(
+      realmKey: string,
+      location: {
+        名称: string;
+        类型: string;
+        描述: string;
+        坐标: { x: number; y: number };
+        所属大陆?: string;
+      }
+    ) {
+      const col = this.realmMapCollection;
+      if (!col || !col[realmKey]) {
+        console.warn(`[gameStateStore] 境界 "${realmKey}" 不存在于地图集，回退到 addWorldLocation`);
+        this.addWorldLocation(location);
+        return;
+      }
+      const realmWorldInfo = col[realmKey] as any;
+      if (!Array.isArray(realmWorldInfo.地点信息)) {
+        realmWorldInfo.地点信息 = [];
+      }
+      const exists = (realmWorldInfo.地点信息 as any[]).some(
+        (loc: any) => loc.名称 === location.名称 || loc.name === location.名称
+      );
+      if (exists) {
+        console.warn(`[gameStateStore] 境界地图 "${realmKey}" 中地点 "${location.名称}" 已存在，跳过`);
+        return;
+      }
+      realmWorldInfo.地点信息.push(location);
+      // 触发 Vue 响应式更新（Pinia 自动处理，但显式赋值更可靠）
+      this.realmMapCollection = { ...col, [realmKey]: realmWorldInfo };
+      console.log(`[gameStateStore] ✅ 境界 "${realmKey}" 已添加地点: ${location.名称}`);
     },
   },
 });

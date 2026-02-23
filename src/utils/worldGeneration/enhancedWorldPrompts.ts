@@ -579,3 +579,212 @@ ${backgroundInfo}${worldBackgroundInfo}${worldEraInfo}${worldNameInfo}
 }
 
 
+
+// ─── 境界地图集 - 新模式（不影响旧 buildPrompt）──────────────────────────────
+
+/** NPC 位置摘要（精简传入，不传记忆/好感/属性） */
+export interface NpcLocationHint {
+  名字: string;      // NPC 姓名
+  境界: string;      // NPC 当前境界
+  当前位置: string;  // NPC 位置描述，如 "青云宗外门区"
+}
+
+/** 低境界已知一级地点（大陆/灵境）上下文 */
+export interface RealmKnownContinentHint {
+  名称: string;
+  来源境界?: string;
+  描述?: string;
+}
+
+/** 低境界已知二级地点上下文 */
+export interface RealmKnownLocationHint {
+  名称: string;
+  类型?: string;
+  描述?: string;
+  坐标?: { x: number; y: number };
+  来源境界?: string;
+}
+
+/** 境界感知地图生成配置 */
+export interface RealmMapPromptConfig {
+  // 角色信息
+  /** 当前境界名称，如 "筑基期" */
+  playerRealm: string;
+  /** 完整境界体系序列（按修炼顺序），如 "凡人→练气期→筑基期→金丹期→..." */
+  playerRealmContext: string;
+  /** 角色出身背景 */
+  playerBackground?: string;
+  /** 所属宗门/势力（可无） */
+  playerFaction?: string;
+  /** 已知位置描述 */
+  playerLocation?: string;
+
+  // 世界信息
+  worldName?: string;
+  worldBackground?: string;
+  worldEra?: string;
+
+  // NPC 位置上下文（可选）
+  npcHints?: NpcLocationHint[];
+
+  // 低境界地图历史框架（仅作背景参考，不要求复写）
+  historicalContinents?: RealmKnownContinentHint[];
+  historicalLocations?: RealmKnownLocationHint[];
+
+  // 地图坐标系配置
+  mapConfig?: WorldMapConfig;
+}
+
+/** 境界感知提示词构建器（新模式专用） */
+export class RealmMapPromptBuilder {
+  /**
+   * 构建境界专属地图的 AI 生成提示词。
+   * 不使用硬编码数量，由 AI 根据境界自主决定规模和内容密度。
+   */
+  static buildPrompt(config: RealmMapPromptConfig): string {
+    const {
+      playerRealm,
+      playerRealmContext,
+      playerBackground,
+      playerFaction,
+      playerLocation,
+      worldName,
+      worldBackground,
+      worldEra,
+      npcHints,
+      historicalContinents,
+      historicalLocations,
+      mapConfig,
+    } = config;
+
+    const minX = Number(mapConfig?.minLng ?? 0);
+    const minY = Number(mapConfig?.minLat ?? 0);
+    const width = Number(mapConfig?.width) || 10000;
+    const height = Number(mapConfig?.height) || 10000;
+    const maxX = minX + width;
+    const maxY = minY + height;
+
+    const lines: string[] = [];
+    if (worldName) lines.push(`世界名称：${worldName}`);
+    if (worldEra) lines.push(`世界纪元：${worldEra}`);
+    if (worldBackground) lines.push(`世界背景：${worldBackground}`);
+    if (playerBackground) lines.push(`角色背景：${playerBackground}`);
+    lines.push(`所属势力/宗门：${playerFaction || '无'}`);
+    if (playerLocation) lines.push(`已知所在位置：${playerLocation}`);
+
+    const parseLocationPath = (desc: string): string[] =>
+      String(desc || '')
+        .split(/[·\-—→>＞/]/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+
+    const requiredNpcWorldLocations = Array.from(new Set(
+      (npcHints ?? [])
+        .map((n) => {
+          const parts = parseLocationPath(n?.当前位置 || '');
+          if (parts.length >= 2) return parts[1];
+          if (parts.length === 1) return parts[0];
+          return '';
+        })
+        .filter(Boolean)
+    ));
+
+    const npcSection = npcHints && npcHints.length > 0
+      ? `\n\n## 已知相关人物（同境界，生成时必须优先覆盖其活动地点）\n${npcHints.map(n => `- ${n.名字}（${n.境界}）：${n.当前位置}`).join('\n')}`
+      : '';
+    const npcHardConstraintSection = requiredNpcWorldLocations.length > 0
+      ? `\n\n## 同境界 NPC 地点硬约束（必须满足）
+以下名称来自 NPC 位置路径的“世界地点层（字段2）”，请在 locations 中全部覆盖（名称需完全一致）：
+${requiredNpcWorldLocations.map((name) => `- ${name}`).join('\n')}
+
+若某地点主要是宗门/势力，也仍需在 locations 中保留同名地点锚点，避免出现“未收录地点”。`
+      : '';
+
+    const knownContinentLines = (historicalContinents ?? [])
+      .filter((c) => String(c?.名称 || '').trim())
+      .map((c) => {
+        const name = String(c.名称).trim();
+        const from = c.来源境界 ? `（来源：${c.来源境界}）` : '';
+        const desc = c.描述 ? `：${c.描述}` : '';
+        return `- ${name}${from}${desc}`;
+      });
+
+    const knownLocationLines = (historicalLocations ?? [])
+      .filter((l) => String(l?.名称 || '').trim())
+      .map((l) => {
+        const name = String(l.名称).trim();
+        const type = l.类型 ? ` [${l.类型}]` : '';
+        const from = l.来源境界 ? `（来源：${l.来源境界}）` : '';
+        const coord = l.坐标 && Number.isFinite(l.坐标.x) && Number.isFinite(l.坐标.y)
+          ? ` @(${Math.round(l.坐标.x)},${Math.round(l.坐标.y)})`
+          : '';
+        return `- ${name}${type}${from}${coord}`;
+      });
+
+    const coveredTypes = Array.from(new Set(
+      (historicalLocations ?? [])
+        .map((l) => String(l?.类型 || '').trim())
+        .filter(Boolean)
+    ));
+    const coveredTypesText = coveredTypes.length > 0 ? coveredTypes.join('、') : '暂无';
+
+    const historicalSection = (knownContinentLines.length > 0 || knownLocationLines.length > 0)
+      ? `\n\n## 低境界已知活动范围（世界框架背景，仅供参考）
+以下信息来自低境界地图（境界1~${playerRealm}前），用于帮助你避免重复建设并补齐高阶区域：
+
+### 已知一级地点（大陆/灵境）
+${knownContinentLines.length > 0 ? knownContinentLines.join('\n') : '- 暂无'}
+
+### 已知二级地点（地标/宗门/区域）
+${knownLocationLines.length > 0 ? knownLocationLines.join('\n') : '- 暂无'}
+
+### 低境界已覆盖类型
+${coveredTypesText}`
+      : '\n\n## 低境界已知活动范围（世界框架背景，仅供参考）\n暂无历史地图信息，可直接构建新境界地图。';
+
+    // 输出格式说明段（使用变量拼接避免模板嵌套）
+    const coordRange = `x 范围 [${minX}, ${maxX}]，y 范围 [${minY}, ${maxY}]`;
+    const formatDesc = [
+      '输出格式（严格 JSON，不含任何说明文字）：',
+      '{',
+      '  "worldName": "世界名称",',
+      '  "worldBackground": "世界背景简述",',
+      '  "worldEra": "世界纪元",',
+      '  "specialSettings": ["特殊设定"],',
+      '  "continents": [{"name":"大洲名","description":"描述","climate":"气候","terrain_features":["地形"],"continent_bounds":[{"x":数字,"y":数字},...]}],',
+      '  "factions": [{"name":"势力名","type":"修仙宗门|魔道宗门|...","level":"超级|一流|二流|三流","description":"描述","feature":"特色","location":{"x":数字,"y":数字},"leaderRealm":"宗主境界","canJoin":true}],',
+      '  "locations": [{"name":"地点名","type":"城池|宗门|秘境|险地|坊市|洞府|...","position":"描述性位置","coordinates":{"x":数字,"y":数字},"description":"描述","feature":"特色","safetyLevel":"安全|较安全|危险|极危险","openStatus":"开放|限制|封闭|未发现","relatedFactions":["相关势力"]}]',
+      '}',
+      '',
+      '若境界较低，continents 可为空数组 []；factions 和 locations 的数量完全由你根据境界决定。',
+      '请直接输出 JSON，不要任何解释文字。',
+    ].join('\n');
+
+    return `你是一个修仙世界的地图设计师。请为处于【${playerRealm}】境界的角色生成一张专属世界地图。
+
+## 角色与世界背景
+${lines.join('\n')}
+当前玩家境界：${playerRealm}
+本世界完整境界体系（按修炼顺序）：${playerRealmContext}${npcSection}${historicalSection}
+${npcHardConstraintSection}
+
+## 核心要求
+
+1. 地图规模自适应：参考上方境界体系序列，判断【${playerRealm}】在整个体系中的所处阶段。
+   - 越早期的境界，地图越聚焦于角色周边局部区域（宗门/城镇/村落附近）
+   - 越高阶的境界，地图越宏观（大陆级甚至多大陆格局）
+   - 地点数量、势力数量、大陆数量不做硬性规定，由你自主决定，确保内容与该境界相称
+
+2. 此地图仅代表【${playerRealm}】境界角色所能认知和涉足的世界范围，不是全世界地图。
+
+3. 坐标系：游戏虚拟坐标，${coordRange}。坐标值为整数，各地点间距不低于 200。
+
+4. 低境界已知地点仅作为背景参考，本次输出请聚焦【${playerRealm}】的新活动范围（只生成新内容，不复写旧地点）。
+
+5. 禁止与“已知二级地点”重名；优先补充低境界未覆盖的高阶区域/类型。
+
+6. 若上方提供了“同境界 NPC 地点硬约束”，则 locations 必须包含全部约束地点名（可额外扩展周边新地点）。
+
+## ${formatDesc}`;
+  }
+}

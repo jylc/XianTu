@@ -97,6 +97,8 @@ export interface UnmappedNpc {
 const props = defineProps<{
   show: boolean;
   npcs: UnmappedNpc[];
+  /** 当境界分层地图模式开启时，传入当前激活的境界 Tab 名称 */
+  activeRealmKey?: string;
 }>();
 
 const emit = defineEmits<{
@@ -134,6 +136,65 @@ function handleIgnore(name: string) {
   ignoredNpcs.value.add(name);
 }
 
+const REALM_RANK_HINTS: Array<{ token: string; rank: number }> = [
+  { token: '凡人', rank: 0 },
+  { token: '练气', rank: 1 },
+  { token: '筑基', rank: 2 },
+  { token: '金丹', rank: 3 },
+  { token: '元婴', rank: 4 },
+  { token: '化神', rank: 5 },
+  { token: '炼虚', rank: 6 },
+  { token: '合体', rank: 7 },
+  { token: '大乘', rank: 8 },
+  { token: '渡劫', rank: 9 },
+  { token: '真仙', rank: 10 },
+  { token: '金仙', rank: 11 },
+  { token: '太乙', rank: 12 },
+  { token: '大罗', rank: 13 },
+  // 武道体系
+  { token: '淬体', rank: 1 },
+  { token: '凝气', rank: 2 },
+  { token: '通玄', rank: 3 },
+  { token: '化真', rank: 4 },
+  { token: '破虚', rank: 5 },
+  { token: '登天', rank: 6 },
+];
+
+function getRealmRank(realmKey: string): number {
+  const raw = String(realmKey || '').trim();
+  if (!raw) return -1;
+  let best = -1;
+  for (const item of REALM_RANK_HINTS) {
+    if (raw.includes(item.token)) {
+      best = Math.max(best, item.rank);
+    }
+  }
+  return best;
+}
+
+/**
+ * 未收录地点默认优先写入玩家主活动区域：
+ * 1. 优先玩家当前境界 map（如果已存在）
+ * 2. 否则回退到地图集中“最高境界” key
+ * 3. 再回退到当前 Tab
+ */
+function resolvePreferredRealmKey(): string | undefined {
+  const col = gameStateStore.realmMapCollection;
+  if (!col || Object.keys(col).length === 0) return props.activeRealmKey;
+
+  const attrs = gameStateStore.attributes as any;
+  const playerRealm =
+    String(attrs?.['境界']?.['名称'] || (typeof attrs?.['境界'] === 'string' ? attrs['境界'] : '') || '').trim();
+  if (playerRealm && col[playerRealm]) return playerRealm;
+
+  const keys = Object.keys(col);
+  const highest = keys
+    .map((key) => ({ key, rank: getRealmRank(key) }))
+    .sort((a, b) => b.rank - a.rank)[0]?.key;
+
+  return highest || props.activeRealmKey;
+}
+
 async function handleAdd(npc: UnmappedNpc) {
   npcStates.value.set(npc.npcName, 'loading');
   npcErrors.value.delete(npc.npcName);
@@ -145,9 +206,17 @@ async function handleAdd(npc: UnmappedNpc) {
   const faction: string =
     npcData?.势力归属 ?? npcData?.所属势力 ?? npcData?.faction ?? '';
 
-  const worldInfo = gameStateStore.worldInfo as any;
+  // 在境界模式下，优先写入玩家当前/最高境界地图；否则用全局 worldInfo
+  const realmKey = resolvePreferredRealmKey();
+  const realmCol = gameStateStore.realmMapCollection;
+  const activeRealmInfo = (realmKey && realmCol && realmCol[realmKey]) ? realmCol[realmKey] as any : null;
+  const worldInfo = activeRealmInfo ?? (gameStateStore.worldInfo as any);
   const existingLocations: any[] = worldInfo?.地点信息 ?? [];
-  const mapConfig = { width: 10000, height: 10000 }; // 默认地图尺寸
+  const mapCfg = worldInfo?.['地图配置'] ?? {};
+  const mapConfig = {
+    width: Number(mapCfg?.width) || 10000,
+    height: Number(mapCfg?.height) || 10000,
+  };
 
   const result = await generateLocationPlacement({
     locationName: npc.locationHint,
@@ -162,7 +231,12 @@ async function handleAdd(npc: UnmappedNpc) {
   });
 
   if (result.success && result.location) {
-    gameStateStore.addWorldLocation(result.location);
+    // 境界模式写入对应境界地图；否则写入全局 worldInfo
+    if (realmKey && realmCol && realmCol[realmKey]) {
+      gameStateStore.addWorldLocationToRealm(realmKey, result.location);
+    } else {
+      gameStateStore.addWorldLocation(result.location);
+    }
     npcStates.value.set(npc.npcName, 'success');
     emit('locationAdded', result.location.名称);
     // 成功后 2 秒自动从列表消失
