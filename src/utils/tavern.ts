@@ -1,6 +1,8 @@
 // 仙途 by 千夜 | github.com/qianye60 | CC BY-NC-SA 4.0
 import { aiService } from '@/services/aiService';
 import type { TavernHelper } from '@/types';
+import { useGameStateStore } from '@/stores/gameStateStore';
+import { computed } from 'vue'
 
 function shouldDebugTavern(): boolean {
   try {
@@ -146,6 +148,14 @@ export function getTavernHelper(): TavernHelper | null {
 }
 
 export async function getCurrentCharacterName(): Promise<string | null> {
+  // 如果不是 tavern 环境，从 gameStateStore 获取角色名
+  // 优先从 character.名字 获取（最新数据），若为空则从 playerName 获取
+  if (!isTavernEnv()) {
+    const gameStateStore = useGameStateStore();
+    return gameStateStore.character?.名字 || gameStateStore.playerName || null;
+  }
+
+  // tavern 环境：从 tavern helper 获取角色名
   const helper = getTavernHelper();
   if (!helper) {
     return null;

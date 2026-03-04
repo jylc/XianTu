@@ -121,7 +121,7 @@
         </div>
         <div class="settings-list">
           <!-- 道号修改 -->
-          <div class="setting-item setting-item-full" v-if="currentPlayerName">
+          <div class="setting-item setting-item-full">
             <div class="setting-info">
               <label class="setting-name">{{ t('修改道号') }}</label>
               <span class="setting-desc">{{ t('修改当前角色的名字') }}</span>
@@ -367,7 +367,7 @@ const onLanguageChange = () => {
 // 道号修改相关
 const newPlayerName = ref('');
 const currentPlayerName = computed(() => {
-  return gameStateStore.character?.名字 || '';
+  return gameStateStore.playerName || '';
 });
 
 // 更新玩家道号
@@ -377,6 +377,9 @@ const updatePlayerName = async () => {
   }
 
   try {
+    // 更新 gameStateStore.playerName（主要数据源）
+    gameStateStore.playerName = newPlayerName.value;
+
     // 更新 gameStateStore 中的角色身份信息（V3：gameStateStore.character）
     if (gameStateStore.character) {
       (gameStateStore.character as any).名字 = newPlayerName.value;

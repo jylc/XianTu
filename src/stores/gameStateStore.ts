@@ -114,6 +114,9 @@ interface GameState {
   onlineState: any | null;
   userSettings: any | null;
 
+  // 角色名字（独立存储，便于外部快速访问）
+  playerName: string;
+
   character: CharacterBaseInfo | null;
   attributes: PlayerAttributes | null;
   location: PlayerLocation | null;
@@ -172,6 +175,8 @@ export const useGameStateStore = defineStore('gameState', {
     saveMeta: null,
     onlineState: null,
     userSettings: null,
+
+    playerName: '', // 角色名字
 
     character: null,
     attributes: null,
@@ -301,6 +306,10 @@ export const useGameStateStore = defineStore('gameState', {
       };
 
       const character: CharacterBaseInfo | null = v3?.角色?.身份 ? deepCopy(v3.角色.身份) : null;
+
+      // 🔥 同步更新 playerName（用于外部快速访问）
+      this.playerName = character?.名字 || '';
+
       const attributes: PlayerAttributes | null = v3?.角色?.属性 ? deepCopy(v3.角色.属性) : null;
       const location: PlayerLocation | null = v3?.角色?.位置 ? deepCopy(v3.角色.位置) : null;
       if (location && (this.onlineState as any)?.模式 === '联机') {
