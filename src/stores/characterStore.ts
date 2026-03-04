@@ -1654,6 +1654,86 @@ export const useCharacterStore = defineStore('characterV3', () => {
   };
 
   /**
+   * [新增] 复制指定存档槽位到新的存档槽位
+   * @param charId 角色ID
+   * @param sourceSlotKey 源存档槽位关键字
+   * @param targetSaveName 目标存档名称
+   * @returns 新存档的槽位ID，失败返回 null
+   */
+  const copySave = async (charId: string, sourceSlotKey: string, targetSaveName: string): Promise<string | null> => {
+    const profile = rootState.value.角色列表[charId];
+    if (!profile || profile.模式 !== '单机' || !profile.存档列表) {
+      toast.error('无法复制存档：角色不存在或非单机模式');
+      return null;
+    }
+
+    const sourceSlot = profile.存档列表[sourceSlotKey];
+    if (!sourceSlot) {
+      toast.error('源存档不存在');
+      return null;
+    }
+
+    if (!sourceSlot.存档数据) {
+      toast.error('源存档没有数据');
+      return null;
+    }
+
+    // 检查目标存档名是否已存在
+    if (profile.存档列表[targetSaveName]) {
+      toast.error('目标存档名称已存在');
+      return null;
+    }
+
+    try {
+      // 1. 深拷贝存档数据
+      const newSaveData = JSON.parse(JSON.stringify(sourceSlot.存档数据));
+
+      // 2. 创建新存档槽位
+      const now = new Date().toISOString();
+      const playerAttributes = (newSaveData as any).角色?.属性;
+      const playerLocation = (newSaveData as any).角色?.位置;
+
+      const newSlot: SaveSlot = {
+        存档名: targetSaveName,
+        保存时间: now,
+        角色名字: (newSaveData as any).角色?.身份?.名字,
+        境界: playerAttributes?.境界?.名称 || '凡人',
+        位置: playerLocation?.描述 || '未知',
+        存档数据: newSaveData,
+      };
+
+      // 计算修为进度
+      if (playerAttributes?.境界 && playerAttributes.境界.下一级所需 > 0) {
+        newSlot.修为进度 = Math.floor((playerAttributes.境界.当前进度 / playerAttributes.境界.下一级所需) * 100);
+      }
+
+      // 更新时间
+      if ((newSaveData as any).元数据?.时间) {
+        const time = (newSaveData as any).元数据.时间;
+        newSlot.游戏内时间 = `${time.年}年${time.月}月${time.日}日`;
+      }
+
+      // 3. 添加到存档列表
+      profile.存档列表[targetSaveName] = newSlot;
+
+      // 4. 保存到 IndexedDB
+      await storage.saveSaveData(charId, targetSaveName, newSaveData);
+
+      // 5. 保存元数据
+      await commitMetadataToStorage();
+
+      toast.success(`已复制存档：【${sourceSlotKey}】 → 【${targetSaveName}】`);
+      debug.log('角色商店', `已复制存档槽位: ${sourceSlotKey} -> ${targetSaveName}`);
+
+      return targetSaveName;
+    } catch (error) {
+      debug.error('角色商店', '复制存档失败', error);
+      toast.error('复制存档失败');
+      return null;
+    }
+  };
+
+  /**
    * [新增] 将当前游戏进度另存为新的存档槽位
    * @param saveName 新存档的名称
    * @returns 新存档的槽位ID，失败返回 null
@@ -2873,6 +2953,7 @@ return {
   deleteSave,
   deleteSaveById,
   createNewSave,
+  copySave, // 新增：复制存档槽位
   saveAsNewSlot, // 新增：另存为新存档
   saveToSlot, // 新增：保存到指定存档槽位
   renameSave,

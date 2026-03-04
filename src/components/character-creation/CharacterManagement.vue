@@ -790,20 +790,63 @@ const handleSelect = async (charId: string, slotKey: string, hasData: boolean) =
   }
 
   if (hasData) {
-    // 对于有数据的存档，直接进入
-    console.log('加载存档...');
-    // 加载存档并跳转到游戏
-    const success = await characterStore.loadGame(charId, slotKey);
-    console.log('加载结果:', success);
-    if (success) {
-      console.log('跳转到游戏界面...');
-      if (props.fullscreen) {
-        emit('character-selected', character);
-      } else {
-        router.push('/game');
-      }
+    // 对于有数据的存档，检查是否为"上次对话"
+    if (slotKey === '上次对话') {
+      // 弹出输入框，让用户输入新存档名
+      showPrompt(
+        '复制上次对话',
+        '请输入新存档的名称：',
+        '上次对话副本',
+        '存档名称',
+        async (newSaveName) => {
+          if (!newSaveName || !newSaveName.trim()) {
+            toast.warning('存档名称不能为空');
+            return;
+          }
+
+          const cleanName = newSaveName.trim();
+
+          // 检查存档名是否已存在
+          const existingSaves = characterStore.rootState.角色列表[charId]?.存档列表;
+          if (existingSaves && existingSaves[cleanName]) {
+            toast.error('存档名称已存在，请使用其他名称。');
+            return;
+          }
+
+          // 调用 characterStore 的 copySave 方法复制存档
+          const newSlotKey = await characterStore.copySave(charId, slotKey, cleanName);
+
+          if (newSlotKey) {
+            // 使用新的 slotKey 加载游戏
+            const success = await characterStore.loadGame(charId, newSlotKey);
+            if (success) {
+              if (props.fullscreen) {
+                emit('character-selected', character);
+              } else {
+                router.push('/game');
+              }
+            } else {
+              console.error('存档加载失败');
+            }
+          }
+        }
+      );
     } else {
-      console.error('存档加载失败');
+      // 对于其他有数据的存档，直接进入
+      console.log('加载存档...');
+      // 加载存档并跳转到游戏
+      const success = await characterStore.loadGame(charId, slotKey);
+      console.log('加载结果:', success);
+      if (success) {
+        console.log('跳转到游戏界面...');
+        if (props.fullscreen) {
+          emit('character-selected', character);
+        } else {
+          router.push('/game');
+        }
+      } else {
+        console.error('存档加载失败');
+      }
     }
   } else {
     // 对于空存档，显示确认对话框

@@ -17,6 +17,7 @@ coverage
 .env.*
 !.env.example
 .claude/
+.crush
 *.sqlite3
 *.db
 backup/
@@ -46,3 +47,4 @@ NUL
 
 # Server (private repository)
 server/
+AGENTS.md
