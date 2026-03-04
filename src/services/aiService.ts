@@ -1642,15 +1642,10 @@ class AIService {
         if (!inReasoningPhase && reasoningText) {
           inReasoningPhase = true;
           needsClosingTag = true;
-          console.log('[reasoning_content] 开始思维链，长度:', reasoningText.length);
-          // 发送开始标签 + 第一个内容
           return `<thinking>${reasoningText}`;
         } else if (inReasoningPhase && reasoningText) {
-          console.log('[reasoning_content] 继续思维链，长度:', reasoningText.length);
-          // 继续发送思维链内容（不带标签）
           return reasoningText;
         }
-        // 空字符串的 reasoning_content，跳过
         return '';
       }
 

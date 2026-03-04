@@ -439,11 +439,11 @@ const handleStreamChunk = (chunk: string) => {
       const thinkingStart = state.buffer.indexOf('<thinking>');
       if (thinkingStart === -1) {
         // 没有找到标签，检查是否可能是不完整的标签
-        if (state.buffer.length > 10 && !state.buffer.includes('<')) {
+        if (state.buffer.length > 8 && !state.buffer.includes('<')) {
           // 安全地输出所有内容作为正文
           uiStore.appendStreamingContent(state.buffer);
           state.buffer = '';
-        } else if (state.buffer.length > 50) {
+        } else if (state.buffer.length > 35) {
           // 缓冲区太长，输出前面的内容
           const safeLen = state.buffer.lastIndexOf('<');
           if (safeLen > 0) {
@@ -470,11 +470,11 @@ const handleStreamChunk = (chunk: string) => {
       const thinkingEnd = state.buffer.indexOf('</thinking>');
       if (thinkingEnd === -1) {
         // 没有找到结束标签，检查是否可能是不完整的标签
-        if (state.buffer.length > 11 && !state.buffer.includes('<')) {
+        if (state.buffer.length > 8 && !state.buffer.includes('<')) {
           // 安全地输出所有内容作为思维链
           uiStore.appendThinkingContent(state.buffer);
           state.buffer = '';
-        } else if (state.buffer.length > 100) {
+        } else if (state.buffer.length > 60) {
           // 缓冲区太长，输出前面的内容
           const safeLen = state.buffer.lastIndexOf('<');
           if (safeLen > 0) {
