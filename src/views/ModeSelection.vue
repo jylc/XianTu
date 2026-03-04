@@ -249,21 +249,33 @@ const enterCharacterSelection = async () => {
 
 /* 主内容区 */
 .selection-content {
-  background: linear-gradient(135deg, rgba(15, 23, 42, 0.88) 0%, rgba(30, 41, 59, 0.85) 100%);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border-radius: 24px;
-  padding: 2.5rem 3rem;
-  border: 1px solid rgba(147, 197, 253, 0.12);
-  box-shadow: 0 24px 48px -12px rgba(0, 0, 0, 0.5);
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.92) 0%, rgba(30, 41, 59, 0.88) 100%);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border-radius: 28px;
+  padding: 3rem 3.5rem;
+  border: 1px solid rgba(147, 197, 253, 0.18);
+  box-shadow:
+    0 24px 48px -12px rgba(0, 0, 0, 0.6),
+    0 0 0 1px rgba(96, 165, 250, 0.1) inset,
+    0 8px 32px rgba(96, 165, 250, 0.08);
   max-width: 820px;
   width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 2rem;
+  gap: 2.5rem;
   position: relative;
   max-height: none;
   overflow: visible;
+  transition: all 0.4s ease;
+}
+
+.selection-content:hover {
+  border-color: rgba(147, 197, 253, 0.25);
+  box-shadow:
+    0 32px 64px -16px rgba(0, 0, 0, 0.7),
+    0 0 0 1px rgba(96, 165, 250, 0.15) inset,
+    0 12px 48px rgba(96, 165, 250, 0.12);
 }
 
 /* 版本号 - 青蓝色发光 */
@@ -388,31 +400,67 @@ const enterCharacterSelection = async () => {
   gap: 1.5rem;
 }
 
-/* 卡片 */
+/* 卡片 - 水墨画风格 */
 .gate-card {
   flex: 1;
   display: flex;
   align-items: center;
   gap: 1.25rem;
   padding: 1.75rem 1.75rem;
-  background: rgba(30, 41, 59, 0.5);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background:
+    radial-gradient(ellipse 800px 600px at 30% 20%, rgba(255, 255, 255, 0.02) 0%, transparent 50%),
+    radial-gradient(ellipse 600px 800px at 70% 80%, rgba(0, 0, 0, 0.3) 0%, transparent 50%),
+    linear-gradient(135deg, rgba(30, 41, 59, 0.4) 0%, rgba(15, 23, 42, 0.6) 100%);
+  border: 1px solid rgba(100, 116, 139, 0.2);
   border-radius: 16px;
   cursor: pointer;
   position: relative;
-  transition: all 0.3s ease;
+  transition: all 0.4s ease;
   min-height: 120px;
+  box-shadow:
+    0 4px 20px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.gate-card::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  background: linear-gradient(135deg,
+    rgba(148, 163, 184, 0.1) 0%,
+    transparent 30%,
+    transparent 70%,
+    rgba(71, 85, 105, 0.15) 100%);
+  border-radius: 16px;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+  pointer-events: none;
 }
 
 .gate-card:hover {
-  background: rgba(30, 41, 59, 0.7);
-  border-color: rgba(147, 197, 253, 0.2);
+  background:
+    radial-gradient(ellipse 800px 600px at 30% 20%, rgba(255, 255, 255, 0.04) 0%, transparent 50%),
+    radial-gradient(ellipse 600px 800px at 70% 80%, rgba(0, 0, 0, 0.35) 0%, transparent 50%),
+    linear-gradient(135deg, rgba(30, 41, 59, 0.5) 0%, rgba(15, 23, 42, 0.7) 100%);
+  border-color: rgba(148, 163, 184, 0.3);
   transform: translateY(-2px);
+  box-shadow:
+    0 8px 28px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.gate-card:hover::before {
+  opacity: 1;
 }
 
 .gate-card.selected {
-  background: rgba(30, 58, 138, 0.4);
-  border-color: rgba(147, 197, 253, 0.35);
+  background:
+    radial-gradient(ellipse at center, rgba(96, 165, 250, 0.08) 0%, transparent 60%),
+    linear-gradient(135deg, rgba(30, 58, 138, 0.35) 0%, rgba(30, 41, 59, 0.5) 100%);
+  border-color: rgba(147, 197, 253, 0.3);
+  box-shadow:
+    0 8px 32px rgba(59, 130, 246, 0.15),
+    inset 0 0 30px rgba(96, 165, 250, 0.05);
 }
 
 .gate-card.disabled {

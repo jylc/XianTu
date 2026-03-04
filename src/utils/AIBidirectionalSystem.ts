@@ -462,6 +462,17 @@ class AIBidirectionalSystemClass {
     // 1. 获取当前存档数据
     options?.onProgressUpdate?.('获取存档数据…');
     const saveData = gameStateStore.toSaveData();
+
+    // 🔥 对话前创建快照（轻量级，不含叙事历史）
+    if (saveData) {
+      const characterStore = useCharacterStore();
+      const active = characterStore.rootState.当前激活存档;
+      if (active) {
+        const { createSnapshot } = await import('@/utils/snapshotManager');
+        createSnapshot(active.角色ID, active.存档槽位, saveData);
+      }
+    }
+
     if (!saveData) {
       // 🔥 特殊处理联机模式：检查是否是联机模式导致的数据不完整
       const onlineState = gameStateStore.onlineState as any;

@@ -364,6 +364,8 @@ const parseJudgementMarkedContent = (markedContent: string): JudgementData | nul
       judgement.remainingHp = value
     } else if (key.includes('骰点') || key.includes('骰子')) {
       judgement.dice = value
+    } else if (key.includes('备注')) {
+      judgement.details?.push(value)
     } else {
       judgement.details?.push(`${key}:${value}`)
     }

@@ -156,7 +156,7 @@ export default (env, argv) => {
       proxy: [
         {
           context: ['/api'],
-          target: 'http://localhost:8000',  // 本地后端服务器
+          target: 'https://back.ddct.top',
           changeOrigin: true,
           secure: false,
           on: {

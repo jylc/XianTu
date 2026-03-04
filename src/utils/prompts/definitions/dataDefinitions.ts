@@ -120,8 +120,10 @@ const RELATIONS_STRUCTURE = `
 境界:{名称,阶段},名称=凡人/练气/筑基/金丹/元婴/化神,阶段=初期/中期/后期/圆满
 属性:气血/灵气/神识的当前和上限必须与境界匹配,禁用占位符数值
 
-[社交.关系矩阵](可选)
-edges:[{from,to,relation?,score?,tags?,updatedAt?}]
+[社交.关系矩阵](NPC间关系网)
+edges:[{from:str,to:str,relation:str,score:num[-100~100],type:str,tags?:[],events?:[],updatedAt:GameTime}]
+relation类型:师徒/道侣/仇敌/盟友/竞争/暗恋/血亲/同门/上下级/债务/恩情
+type:单向|双向;score:关系强度;events:关键事件记录;updatedAt:最后更新时间
 
 [NSFW:PrivacyProfile](路径:社交.关系.{NPC名}.私密信息)
 私密信息字段:是否为处女:bool;性格倾向/性取向/当前性状态/性经验等级/亲密节奏/亲密需求/安全偏好/体液分泌状态/避孕措施:str;性渴望程度/性交总次数:num;最近一次性行为时间:str;亲密偏好/禁忌清单/性癖好/性伴侣名单/特殊体质:[];生育状态:{是否可孕:bool;当前状态:str;妊娠月数?:num;预计分娩时间?:str};身体部位:BodyPartDevelopment[]

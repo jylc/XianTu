@@ -2287,7 +2287,12 @@ export const useCharacterStore = defineStore('characterV3', () => {
 
     // 🔥 修复：同步到gameStateStore，确保UI立即更新
     const gameStateStore = useGameStateStore();
-    gameStateStore.loadFromSaveData(rolledBackData);
+    await gameStateStore.loadFromSaveData(rolledBackData);
+
+    // 🔥 强制触发UI更新
+    const uiStore = useUIStore();
+    uiStore.resetStreamingState();
+    uiStore.lastSentUserIntentText = '';
 
     debug.log('角色商店', '✅ 已成功回滚到上次对话前的状态');
   };

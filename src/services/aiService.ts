@@ -784,7 +784,7 @@ class AIService {
     fn: () => Promise<T>,
     opts?: { retries?: number; baseDelayMs?: number },
   ): Promise<T> {
-    const retries = opts?.retries ?? 2; // 总尝试次数 = 1 + retries
+    const retries = opts?.retries ?? this.config.maxRetries ?? 2;
     const baseDelayMs = opts?.baseDelayMs ?? 800;
 
     let lastError: unknown;
@@ -1236,7 +1236,7 @@ class AIService {
                 'Authorization': `Bearer ${apiKey}`,
                 'Content-Type': 'application/json'
               },
-              timeout: 120000,
+              timeout: 60000, // 减少到60秒
               signal: this.getAbortSignal()
             }
           );
@@ -1372,7 +1372,7 @@ class AIService {
                 'anthropic-version': '2023-06-01',
                 'Content-Type': 'application/json'
               },
-              timeout: 120000,
+              timeout: 60000, // 减少到60秒
               signal: this.getAbortSignal()
             }
           );
@@ -1642,13 +1642,10 @@ class AIService {
         if (!inReasoningPhase && reasoningText) {
           inReasoningPhase = true;
           needsClosingTag = true;
-          // 发送开始标签 + 第一个内容
           return `<thinking>${reasoningText}`;
         } else if (inReasoningPhase && reasoningText) {
-          // 继续发送思维链内容（不带标签）
           return reasoningText;
         }
-        // 空字符串的 reasoning_content，跳过
         return '';
       }
 

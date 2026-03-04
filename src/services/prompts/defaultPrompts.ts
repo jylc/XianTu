@@ -50,6 +50,7 @@ import { REALM_ATTRIBUTE_STANDARDS, QUALITY_SYSTEM, REPUTATION_GUIDE } from '@/u
 import { ACTION_OPTIONS_RULES } from '@/utils/prompts/definitions/actionOptions';
 import { EVENT_SYSTEM_RULES } from '@/utils/prompts/definitions/eventSystemRules';
 import { PLAYER_PERSONALITY_RULES } from '@/utils/prompts/definitions/playerPersonality';
+import { NPC_RELATION_NETWORK_RULES, NPC_RELATION_COMMANDS, NPC_FACTION_RULES } from '@/utils/prompts/definitions/npcRelationRules';
 
 export interface PromptDefinition {
   name: string;
@@ -122,6 +123,9 @@ const EXTENDED_BUSINESS_RULES = [
   SIX_SI_ACQUISITION_RULES,
   SECT_DYNAMIC_GENERATION_RULES,
   NPC_RULES,
+  NPC_RELATION_NETWORK_RULES,
+  NPC_RELATION_COMMANDS,
+  NPC_FACTION_RULES,
   GRAND_CONCEPT_CONSTRAINTS,
   SKILL_AND_SPELL_USAGE_RULES,
   ECONOMY_AND_PRICING_RULES,

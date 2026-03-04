@@ -83,14 +83,15 @@
           <div class="narrative-meta">
             <span class="narrative-time">{{ currentNarrative.time }}</span>
             <div class="meta-buttons">
-              <!-- 回滚按钮 -->
+              <!-- 快照回退按钮 -->
               <button
-                v-if="canRollback"
-                @click="rollbackToLastConversation"
-                class="header-action-btn rollback-btn"
-                :title="t('回滚到上次对话前的状态')"
+                v-if="snapshots.length > 0"
+                @click="rollbackToLastSnapshot"
+                class="header-action-btn snapshot-btn"
+                :title="t('回退到上一条对话')"
               >
-                <RotateCcw :size="20" />
+                <History :size="20" />
+                <span class="snapshot-count">{{ snapshots.length }}</span>
               </button>
 
               <button
@@ -359,7 +360,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onActivated, onUnmounted, nextTick, computed, watch } from 'vue';
 import {
-  Send, Loader2, ChevronDown, ChevronRight, ScrollText, RotateCcw, Shield, BrainCircuit, Bell
+  Send, Loader2, ChevronDown, ChevronRight, ScrollText, RotateCcw, Shield, BrainCircuit, Bell, History
 } from 'lucide-vue-next';
 import { useRouter } from 'vue-router';
 import { useI18n } from '@/i18n';
@@ -377,6 +378,7 @@ import { aiService } from '@/services/aiService';
 import { extractTextFromJsonResponse } from '@/utils/textSanitizer';
 import FormattedText from '@/components/common/FormattedText.vue';
 import { useGameStateStore } from '@/stores/gameStateStore';
+import { getSnapshots } from '@/utils/snapshotManager';
 import type {  CharacterProfile } from '@/types/game';
 import type { GM_Response } from '@/types/AIGameMaster'; // AIGameMaster.d.ts 仍然需要保留
 
@@ -437,11 +439,11 @@ const handleStreamChunk = (chunk: string) => {
       const thinkingStart = state.buffer.indexOf('<thinking>');
       if (thinkingStart === -1) {
         // 没有找到标签，检查是否可能是不完整的标签
-        if (state.buffer.length > 10 && !state.buffer.includes('<')) {
+        if (state.buffer.length > 8 && !state.buffer.includes('<')) {
           // 安全地输出所有内容作为正文
           uiStore.appendStreamingContent(state.buffer);
           state.buffer = '';
-        } else if (state.buffer.length > 50) {
+        } else if (state.buffer.length > 35) {
           // 缓冲区太长，输出前面的内容
           const safeLen = state.buffer.lastIndexOf('<');
           if (safeLen > 0) {
@@ -468,11 +470,11 @@ const handleStreamChunk = (chunk: string) => {
       const thinkingEnd = state.buffer.indexOf('</thinking>');
       if (thinkingEnd === -1) {
         // 没有找到结束标签，检查是否可能是不完整的标签
-        if (state.buffer.length > 11 && !state.buffer.includes('<')) {
+        if (state.buffer.length > 8 && !state.buffer.includes('<')) {
           // 安全地输出所有内容作为思维链
           uiStore.appendThinkingContent(state.buffer);
           state.buffer = '';
-        } else if (state.buffer.length > 100) {
+        } else if (state.buffer.length > 60) {
           // 缓冲区太长，输出前面的内容
           const safeLen = state.buffer.lastIndexOf('<');
           if (safeLen > 0) {
@@ -909,6 +911,77 @@ const rollbackToLastConversation = async () => {
   });
 };
 
+// 快照相关
+const showSnapshotMenu = ref(false);
+const snapshots = computed(() => {
+  const active = characterStore.rootState.当前激活存档;
+  if (!active) return [];
+  return getSnapshots(active.角色ID, active.存档槽位).reverse();
+});
+
+const formatSnapshotTime = (timestamp: number) => {
+  const now = Date.now();
+  const diff = now - timestamp;
+  const minutes = Math.floor(diff / 60000);
+  if (minutes < 1) return '刚刚';
+  if (minutes < 60) return `${minutes}分钟前`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}小时前`;
+  return new Date(timestamp).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+};
+
+const rollbackToSnapshot = async (snapshotId: string) => {
+  showSnapshotMenu.value = false;
+  const active = characterStore.rootState.当前激活存档;
+  if (!active) return;
+
+  uiStore.showRetryDialog({
+    title: '回退确认',
+    message: '确定要回退到此快照吗？当前进度将被替换。',
+    confirmText: '确认回退',
+    cancelText: '取消',
+    onConfirm: async () => {
+      try {
+        const { getSnapshot, restoreSnapshot } = await import('@/utils/snapshotManager');
+        const snap = getSnapshot(active.角色ID, active.存档槽位, snapshotId);
+        if (!snap) throw new Error('快照不存在');
+
+        const currentData = gameStateStore.toSaveData();
+        if (!currentData) throw new Error('无法获取当前数据');
+
+        const restored = restoreSnapshot(currentData, snap);
+        await gameStateStore.loadFromSaveData(restored);
+
+        const profile = characterStore.activeCharacterProfile;
+        if (profile?.模式 === '单机' && profile.存档列表) {
+          const slot = profile.存档列表[active.存档槽位];
+          if (slot) {
+            slot.存档数据 = restored;
+            const { saveSaveData } = await import('@/utils/indexedDBManager');
+            await saveSaveData(active.角色ID, active.存档槽位, restored);
+          }
+        }
+
+        uiStore.resetStreamingState();
+        uiStore.lastSentUserIntentText = '';
+        toast.success('已回退到快照');
+      } catch (error) {
+        console.error('回退失败:', error);
+        toast.error(`回退失败: ${error instanceof Error ? error.message : '未知错误'}`);
+      }
+    },
+    onCancel: () => {}
+  });
+};
+
+// 回退到最后一条快照
+const rollbackToLastSnapshot = async () => {
+  if (snapshots.value.length === 0) return;
+  const lastSnapshot = snapshots.value[snapshots.value.length - 1];
+  await rollbackToSnapshot(lastSnapshot.id);
+};
+
+
 // 扁平化的行动列表，用于简化UI显示
 const flatActions = computed(() => {
   const actions: ActionItem[] = [];
@@ -1333,22 +1406,13 @@ const removeActionFromQueue = async (index: number) => {
   }
 };
 
-// 选择行动选项（只填充到输入框，不自动发送，防止误触）
+// 选择行动选项（默认替换输入框内容）
 const selectActionOption = (option: string) => {
   const trimmed = (option || '').trim();
   if (!trimmed) return;
 
   lastSelectedActionOption.value = trimmed;
-
-  const existing = (inputText.value || '').trim();
-  if (!existing) {
-    inputText.value = trimmed;
-  } else if (existing === trimmed) {
-    return;
-  } else {
-    // 不覆盖用户手动输入：追加为参考项，避免“我说的被行动推荐覆盖”的误会
-    inputText.value = `${existing}\n（行动推荐）${trimmed}`;
-  }
+  inputText.value = trimmed;
 
   nextTick(() => {
     inputRef.value?.focus?.();
@@ -2114,6 +2178,77 @@ const syncGameState = async () => {
 </script>
 
 <style scoped>
+/* 快照回退样式 */
+.rollback-group {
+  position: relative;
+  display: flex;
+  gap: 4px;
+}
+
+.snapshot-btn {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.snapshot-count {
+  background: var(--color-primary);
+  color: white;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 10px;
+  min-width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.snapshot-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  min-width: 200px;
+  max-height: 300px;
+  overflow-y: auto;
+  z-index: 100;
+}
+
+.snapshot-item {
+  padding: 8px 12px;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.snapshot-item:hover {
+  background: var(--color-surface-hover);
+}
+
+.snapshot-item:last-child {
+  border-bottom: none;
+}
+
+.snapshot-label {
+  font-size: 13px;
+  color: var(--color-text);
+}
+
+.snapshot-time {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+}
+
 /* 命令日志弹窗样式 */
 .command-log-overlay {
   position: fixed;
