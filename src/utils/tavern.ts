@@ -2,7 +2,7 @@
 import { aiService } from '@/services/aiService';
 import type { TavernHelper } from '@/types';
 import { useGameStateStore } from '@/stores/gameStateStore';
-import { computed } from 'vue'
+import { useUIStore } from '@/stores/uiStore';
 
 function shouldDebugTavern(): boolean {
   try {
@@ -152,7 +152,8 @@ export async function getCurrentCharacterName(): Promise<string | null> {
   // 优先从 character.名字 获取（最新数据），若为空则从 playerName 获取
   if (!isTavernEnv()) {
     const gameStateStore = useGameStateStore();
-    return gameStateStore.character?.名字 || gameStateStore.playerName || null;
+    const uiStore = useUIStore();
+    return gameStateStore.character?.名字 || uiStore.playerName || null;
   }
 
   // tavern 环境：从 tavern helper 获取角色名

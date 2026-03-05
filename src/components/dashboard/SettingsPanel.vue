@@ -367,7 +367,7 @@ const onLanguageChange = () => {
 // 道号修改相关
 const newPlayerName = ref('');
 const currentPlayerName = computed(() => {
-  return gameStateStore.playerName || '';
+  return uiStore.playerName || '';
 });
 
 // 更新玩家道号
@@ -377,8 +377,8 @@ const updatePlayerName = async () => {
   }
 
   try {
-    // 更新 gameStateStore.playerName（主要数据源）
-    gameStateStore.playerName = newPlayerName.value;
+    // 更新 uiStore.playerName（主要数据源，localStorage持久化）
+    uiStore.playerName = newPlayerName.value;
 
     // 更新 gameStateStore 中的角色身份信息（V3：gameStateStore.character）
     if (gameStateStore.character) {

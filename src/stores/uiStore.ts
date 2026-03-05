@@ -101,6 +101,9 @@ export const useUIStore = defineStore('ui', () => {
   // 🔥 [流式传输设置] 控制是否启用流式传输（全局持久化）
   const useStreaming = ref(localStorage.getItem('useStreaming') !== 'false'); // 默认开启
 
+  // 🔥 [玩家名字] 控制玩家道号（全局持久化）
+  const playerName = ref(localStorage.getItem('playerName') || ''); // 默认为空
+
   // 🔥 [后端状态管理] 统一管理后端连接状态
   const backendStatus = ref({
     configured: isBackendConfigured(),
@@ -471,6 +474,15 @@ export const useUIStore = defineStore('ui', () => {
       set: (val) => {
         useStreaming.value = val;
         localStorage.setItem('useStreaming', String(val));
+      }
+    }),
+
+    // 🔥 [玩家名字] 暴露玩家名字（全局持久化）
+    playerName: computed({
+      get: () => playerName.value,
+      set: (val) => {
+        playerName.value = val;
+        localStorage.setItem('playerName', val);
       }
     }),
 
