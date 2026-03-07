@@ -249,9 +249,9 @@ const difficultyOptions = [
 // 创建一个稳定的默认配置
 const createDefaultWorldConfig = () => ({
   majorFactionsCount: 5,
-  totalLocations: 12,
-  secretRealmsCount: 5,
-  continentCount: 4,
+  totalLocations: 2,
+  secretRealmsCount: 2,
+  continentCount: 2,
   generateOnlyContinents: true // 默认开启仅生成大陆
 });
 
