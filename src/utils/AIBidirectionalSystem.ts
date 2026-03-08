@@ -944,7 +944,8 @@ ${stateToonString}
 
       if (shouldActuallySplit) {
         // 🔥 分步生成第1步直接复用 buildNarrativeState（已在上方定义）
-        const buildNarrativeStateForStep1 = (): string => JSON.stringify(buildNarrativeState());
+        //const buildNarrativeStateForStep1 = (): string => JSON.stringify(buildNarrativeState());
+        const buildConciseNarrativeStateForStep1 = (): string => encode(buildConciseNarrativeState());
 
         const buildSplitSystemPrompt = async (step: 1 | 2): Promise<string> => {
           const tavernEnv = !!tavernHelper;
@@ -956,7 +957,8 @@ ${stateToonString}
             // 🔥 添加判定规则，确保战斗等场景使用判定系统
             const textFormatsPrompt = await getPrompt('textFormatRules');
             // 🔥 添加精简版存档数据，用于叙事判定（知道玩家装备、状态、NPC关系等）
-            const narrativeStateJson = buildNarrativeStateForStep1();
+            //const narrativeStateJson = buildNarrativeStateForStep1();
+            const narrativeStateToon=buildConciseNarrativeStateForStep1()
             // 只给叙事相关的提示词，不给coreOutputRules/dataDefinitions等指令格式提示词
             return `
 ${stepRules}
@@ -976,7 +978,7 @@ ${worldStandardsPrompt}
 ${coreStatusSummary}
 ${vectorMemorySection ? `\n${vectorMemorySection}\n` : ''}
 # 当前游戏状态（用于叙事判定，无需输出指令）
-${narrativeStateJson}
+${narrativeStateToon}
 `.trim();
           }
 
