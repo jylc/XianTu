@@ -21,9 +21,10 @@ import { updateStatusEffects } from './statusEffectManager';
 import { sanitizeAITextForDisplay } from '@/utils/textSanitizer';
 import { validateAndRepairNpcProfile } from '@/utils/dataValidation';
 import { stripNsfwContent } from '@/utils/prompts/definitions/dataDefinitions';
-import { isSaveDataV3, migrateSaveDataToLatest } from './saveMigration';
+import { isSaveDataV3, migrateSaveDataToLatest, migrateNarrativeCharacterState } from './saveMigration';
 import { parseJsonSmart } from '@/utils/jsonExtract';
 import type { APIUsageType } from '@/stores/apiManagementStore';
+import { encode } from '@toon-format/toon'
 
 type PlainObject = Record<string, unknown>;
 
@@ -663,8 +664,35 @@ class AIBidirectionalSystemClass {
         };
       };
 
-      const stateJsonString = JSON.stringify(buildNarrativeState());
+      const buildConciseNarrativeState = (): Record<string, unknown> => {
+        const { character: migratedCharacter, 人物属性, cleanedSocial } = migrateNarrativeCharacterState(stateForAI);
 
+        const result: Record<string, unknown> = {
+          元数据: { 时间: stateForAI.元数据?.时间 },
+          角色: migratedCharacter,
+          社交: {
+            关系: cleanedSocial || stateForAI.社交?.关系,
+            宗门: stateForAI.社交?.宗门,
+            任务: stateForAI.社交?.任务,
+            事件: stateForAI.社交?.事件,
+            记忆: {
+              中期记忆: stateForAI.社交?.记忆?.中期记忆,
+              长期记忆: stateForAI.社交?.记忆?.长期记忆,
+            },
+          },
+          世界: stateForAI.世界,
+        };
+
+        // 如果有人物属性数据，则添加到顶级结构中
+        if (人物属性) {
+          result.人物属性 = 人物属性;
+        }
+
+        return result;
+      };
+
+      //const stateJsonString = JSON.stringify(buildNarrativeState());
+      const stateToonString=encode(buildConciseNarrativeState());
       const activePrompts: string[] = [];
       if (actionOptionsEnabled) {
         activePrompts.push('actionOptions');
@@ -756,7 +784,7 @@ ${coreStatusSummary}
 ${vectorMemorySection ? `\n${vectorMemorySection}\n` : ''}
 # 游戏状态
 你正在修仙世界《仙途》中扮演GM。以下是当前完整游戏存档(JSON格式):
-${stateJsonString}
+${stateToonString}
 `.trim();
 
       const userActionForAI = (userMessage && userMessage.toString().trim()) || '继续当前活动';
@@ -988,7 +1016,7 @@ ${coreStatusSummary}
 ${focusedNpcPrompt ? `\n${focusedNpcPrompt}\n` : ''}
 
 # 游戏状态（JSON）
-${stateJsonString}
+${stateToonString}
 `.trim();
         };
 

@@ -23,6 +23,7 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
+    "@toon-format/toon": "^2.1.0",
     "@vueuse/core": "^14.1.0",
     "axios": "^1.11.0",
     "chart.js": "^4.5.1",
