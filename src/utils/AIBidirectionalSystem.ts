@@ -299,10 +299,11 @@ class AIBidirectionalSystemClass {
     }
   }
 
+
   private extractNarrativeText(raw: string): string {
     // 🔥 移除思维链标签（兜底保护）
     // 支持多种变体：<thinking>, <antThinking>, <ant-thinking>, <reasoning>, <thought> 等
-    const cleaned = String(raw || '')
+    let cleaned = String(raw || '')
       .replace(/<(?:ant[-_]?)?thinking>[\s\S]*?<\/(?:ant[-_]?)?thinking>/gi, '')
       .replace(/<\/?(?:ant[-_]?)?thinking>/gi, '')
       .replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, '')
@@ -312,22 +313,49 @@ class AIBidirectionalSystemClass {
       .trim();
 
     if (!cleaned) return '';
+    function removeSpacesAndLineBreaks(text: string): string {
+      return text.replace(/[ \r\n]+/g, "\\n");
+    }
+
 
     // 如果是JSON格式，提取text字段
     if (cleaned.startsWith('{') || cleaned.includes('```')) {
+      // 🔥 修复：如果 cleaned 没有以 } 结尾，尝试补全
+      // 这可以处理 AI 输出被截断的情况
+      if (!cleaned.endsWith('}')) {
+        console.log('[extractNarrativeText] 检测到未闭合的 JSON/对象，尝试补全 }');
+        cleaned += '}';
+      }
       try {
         const parsed = this.parseAIResponse(cleaned);
+        console.log('[世界事件] 尝试解析JSON:', parsed)
         return parsed?.text?.trim() || '';
       } catch {
+        console.log('[世界事件] JSON解析失败，尝试提取代码块,原始文本:',cleaned)
         // JSON解析失败，尝试提取代码块
         const codeBlockMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)```/i);
+        cleaned=removeSpacesAndLineBreaks(cleaned);
+        console.log('[世界事件] 尝试提取代码块,处理后文本:',cleaned)
+        console.log('codeBlockMatch?.[1]:',codeBlockMatch?.[1]);
         if (codeBlockMatch?.[1]) {
           try {
             const obj = JSON.parse(codeBlockMatch[1].trim()) as Record<string, unknown>;
+            console.log('[世界事件] 尝试解析JSON:', obj)
             return String(obj.text || obj.叙事文本 || obj.narrative || '').trim();
           } catch {
             // 代码块内容本身就是文本
+            console.log('[世界事件] 代码块内容本身就是文本,处理后文本:',cleaned)
             return codeBlockMatch[1].trim();
+          }
+        }else{
+          try {
+            const obj = JSON.parse(cleaned.trim()) as Record<string, unknown>;
+            console.log('[世界事件] 尝试解析JSON:', obj)
+            return String(obj.text || obj.叙事文本 || obj.narrative || '').trim();
+          } catch {
+            // 代码块内容本身就是文本
+            console.log('[世界事件] 代码块内容本身就是文本,处理后文本:',cleaned)
+            return cleaned.trim();
           }
         }
       }
@@ -3449,7 +3477,7 @@ ${saveDataJson}`;
     rawText = rawText.trim();
 
     console.log('[parseAIResponse] 原始响应长度:', rawText.length);
-    console.log('[parseAIResponse] 原始响应前500字符:', rawText.substring(0, 500));
+    console.log('[parseAIResponse] 原始响应字符:', rawText.substring(0, rawText.length));
     console.log('[parseAIResponse] 强JSON模式:', forceJsonMode);
 
     const standardize = (obj: Record<string, unknown>): GM_Response => {
@@ -3488,7 +3516,7 @@ ${saveDataJson}`;
     // 🔥 核心策略：使用统一的智能JSON解析（根据forceJsonMode自动选择策略）
     try {
       const parsedObj = parseJsonSmart<Record<string, unknown>>(rawText, forceJsonMode);
-      console.log('[parseAIResponse] ✅ 成功解析JSON对象');
+      console.log('[parseAIResponse] ✅ 成功解析JSON对象:',parsedObj);
       return standardize(parsedObj);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
