@@ -42,6 +42,7 @@ export interface CharacterCreationPayload {
   origin_id: number | null;
   spirit_root_id: number | null;
   selected_talent_ids: number[];
+  customOpeningText: string;
 }
 
 type DataSource = 'local' | 'cloud';
@@ -111,6 +112,7 @@ export const useCharacterCreationStore = defineStore('characterCreation', () => 
     origin_id: null,
     spirit_root_id: null,
     selected_talent_ids: [],
+    customOpeningText: '',
   });
   const currentStep = ref(1);
   const isLocalCreation = ref(true);
@@ -398,6 +400,7 @@ export const useCharacterCreationStore = defineStore('characterCreation', () => 
       origin_id: null,
       spirit_root_id: null,
       selected_talent_ids: [],
+      customOpeningText: '',
     };
   }
 

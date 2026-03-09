@@ -692,7 +692,7 @@ class AIBidirectionalSystemClass {
       };
 
       //const stateJsonString = JSON.stringify(buildNarrativeState());
-      const stateToonString=encode(buildConciseNarrativeState());
+      const stateToonString=encode(buildConciseNarrativeState()).replace(/"/g, '');
       const activePrompts: string[] = [];
       if (actionOptionsEnabled) {
         activePrompts.push('actionOptions');
@@ -945,7 +945,7 @@ ${stateToonString}
       if (shouldActuallySplit) {
         // 🔥 分步生成第1步直接复用 buildNarrativeState（已在上方定义）
         //const buildNarrativeStateForStep1 = (): string => JSON.stringify(buildNarrativeState());
-        const buildConciseNarrativeStateForStep1 = (): string => encode(buildConciseNarrativeState());
+        const buildConciseNarrativeStateForStep1 = (): string => encode(buildConciseNarrativeState()).replace(/"/g, '');
 
         const buildSplitSystemPrompt = async (step: 1 | 2): Promise<string> => {
           const tavernEnv = !!tavernHelper;
@@ -1017,7 +1017,7 @@ ${assembled}
 ${coreStatusSummary}
 ${focusedNpcPrompt ? `\n${focusedNpcPrompt}\n` : ''}
 
-# 游戏状态（JSON）
+# 游戏状态（TOON）
 ${stateToonString}
 `.trim();
         };

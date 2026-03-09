@@ -249,6 +249,7 @@ export function buildCharacterSelectionsSummary(
     talents: Talent[];
     attributes: Record<string, number>;
     difficultyPrompt?: string; // 难度提示词
+    customOpeningText:string;
   },
   worldContext?: {
     worldInfo?: WorldInfo;
@@ -259,7 +260,7 @@ export function buildCharacterSelectionsSummary(
   }
 ): string {
   // 提取数据
-  const { name, gender, race, age, world, talentTier, origin, spiritRoot, talents, attributes, difficultyPrompt } = userSelections;
+  const { name, gender, race, age, world, talentTier, origin, spiritRoot, talents, attributes, difficultyPrompt,customOpeningText } = userSelections;
 
   const originIsObj = typeof origin === 'object' && origin !== null;
   const spiritRootIsObj = typeof spiritRoot === 'object' && spiritRoot !== null;
@@ -281,6 +282,14 @@ export function buildCharacterSelectionsSummary(
     ?.slice(0, 8)
     .map(l => `- ${l.name || l.名称} (${l.type || l.类型})`)
     .join('\n') || '(未生成)';
+
+  // 🔥 改进：仅当用户提供了自定义开局文本时才显示该部分
+  const hasCustomOpening = customOpeningText && typeof customOpeningText === 'string' && customOpeningText.trim().length > 0;
+  const customOpeningSection = hasCustomOpening ? `
+
+## ⚠️ 玩家自定义开局提示（最高优先级）
+${customOpeningText.trim()}
+` : '';
 
   return `
 # 玩家角色数据
@@ -305,7 +314,7 @@ ${spiritRootIsObj ? `${(spiritRoot as SpiritRoot).name} (${(spiritRoot as Spirit
 ${talentsList}
 
 ## 先天六司
-${attrList}
+${attrList}${customOpeningSection}
 
 ---
 

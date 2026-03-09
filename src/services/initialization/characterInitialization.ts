@@ -418,7 +418,8 @@ async function generateOpeningScene(saveData: SaveData, baseInfo: CharacterBaseI
     spiritRoot: baseInfo.灵根, // 现在是完整对象或"随机灵根"
     talents: baseInfo.天赋 || [], // 现在是完整对象数组
     attributes: (baseInfo.先天六司 || {}) as unknown as Record<string, number>,
-    difficultyPrompt: characterCreationStore.currentDifficultyPrompt // 🔥 添加难度提示词
+    difficultyPrompt: characterCreationStore.currentDifficultyPrompt, // 🔥 添加难度提示词
+    customOpeningText: characterCreationStore.characterPayload.customOpeningText || ''
   };
 
   console.log('[初始化] 🔥 用户选择数据检查:');
@@ -462,6 +463,7 @@ async function generateOpeningScene(saveData: SaveData, baseInfo: CharacterBaseI
   const systemPrompt = await buildCharacterInitializationPrompt();
   const selectionsSummary = buildCharacterSelectionsSummary(userSelections, worldContext);
 
+
   const userPrompt = `我创建了角色"${baseInfo.名字}"，请根据我的选择生成开局故事和初始数据。
 
 ${selectionsSummary}
@@ -469,8 +471,7 @@ ${selectionsSummary}
 **重要提示**：
 - 严格按照我的角色设定来生成内容
 - 我选择的是什么样的出身、天赋、灵根，你就如实展现
-- 不要强加任何预设的剧情方向或生活方式
-- 这只是一个开始，我的人生我做主`;
+- 不要强加任何预设的剧情方向或生活方式`;
 
   console.log(`[初始化] 准备生成开场剧情，角色: ${baseInfo.名字}`);
   console.log(`[初始化] 可用大陆列表:`, worldContext.availableContinents.map((c: any) => c.名称));

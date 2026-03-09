@@ -32,6 +32,21 @@
         />
       </div>
 
+      <!-- Custom Opening Text -->
+      <div class="preview-item custom-opening-item">
+        <label for="customOpeningText">{{ $t('自定义开局文本:') }}</label>
+        <textarea
+          id="customOpeningText"
+          class="custom-opening-textarea"
+          v-model="store.characterPayload.customOpeningText"
+          :placeholder="$t('可选：自定义开局场景描述（留空则由AI自动生成）')"
+          rows="4"
+          @mousedown.stop
+          @click.stop
+        />
+        <span class="custom-opening-hint">{{ $t('可选：自定义开局场景描述，留空则由AI根据你的设定自动生成') }}</span>
+      </div>
+
       <!-- Gender Selection -->
       <div class="preview-item gender-item">
         <h3>{{ $t('性别') }}</h3>
@@ -371,12 +386,12 @@ const validateAge = () => {
 }
 
 /* 名字输入 */
-.name-item, .race-item {
+.name-item, .race-item, .custom-opening-item {
   grid-column: span 2;
 }
 
 @media (min-width: 769px) {
-  .name-item, .race-item {
+  .name-item, .race-item, .custom-opening-item {
     grid-column: 1 / -1;
   }
 }
@@ -426,6 +441,48 @@ const validateAge = () => {
 
 /* 名字提示文字 */
 .name-hint {
+  font-size: 0.85rem;
+  color: #94a3b8;
+  margin-top: 0.5rem;
+  display: block;
+}
+
+/* 自定义开局文本输入 */
+.custom-opening-item label {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #93c5fd;
+  margin-bottom: 0.5rem;
+  display: block;
+}
+
+.custom-opening-textarea {
+  width: 100%;
+  background: rgba(30, 41, 59, 0.6);
+  border: 1px solid rgba(147, 197, 253, 0.3);
+  color: #f1f5f9;
+  padding: 0.75rem;
+  border-radius: 8px;
+  font-size: 1rem;
+  box-sizing: border-box;
+  transition: all 0.25s ease;
+  resize: vertical;
+  min-height: 100px;
+  font-family: inherit;
+  line-height: 1.5;
+}
+
+.custom-opening-textarea:focus {
+  outline: none;
+  border-color: #93c5fd;
+  box-shadow: 0 0 0 2px rgba(147, 197, 253, 0.1);
+}
+
+.custom-opening-textarea::placeholder {
+  color: #64748b;
+}
+
+.custom-opening-hint {
   font-size: 0.85rem;
   color: #94a3b8;
   margin-top: 0.5rem;
@@ -734,11 +791,25 @@ const validateAge = () => {
   color: #2563eb;
 }
 
+[data-theme="light"] .custom-opening-item label {
+  color: #2563eb;
+}
+
 [data-theme="light"] .name-item input,
 [data-theme="light"] .input-field input {
   background: rgba(255, 255, 255, 0.8);
   border-color: rgba(59, 130, 246, 0.3);
   color: #1e293b;
+}
+
+[data-theme="light"] .custom-opening-textarea {
+  background: rgba(255, 255, 255, 0.8);
+  border-color: rgba(59, 130, 246, 0.3);
+  color: #1e293b;
+}
+
+[data-theme="light"] .custom-opening-textarea::placeholder {
+  color: #94a3b8;
 }
 
 [data-theme="light"] .gender-label {
@@ -828,6 +899,12 @@ const validateAge = () => {
   .name-item input {
     padding: 0.6rem;
     font-size: 0.9rem;
+  }
+
+  .custom-opening-textarea {
+    padding: 0.6rem;
+    font-size: 0.9rem;
+    min-height: 80px;
   }
 
   .gender-label {
