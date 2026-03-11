@@ -31,6 +31,7 @@ export interface AIConfig {
     temperature?: number;
     maxTokens?: number;
     forceJsonOutput?: boolean;
+    enableThinking?: boolean;  // 启用Thinking模式（仅支持智谱GLM）
   };
 }
 
@@ -546,7 +547,9 @@ class AIService {
             apiKey: apiConfig.apiKey,
             model: apiConfig.model,
             temperature: apiConfig.temperature,
-            maxTokens: apiConfig.maxTokens
+            maxTokens: apiConfig.maxTokens,
+            forceJsonOutput: apiConfig.forceJsonOutput,
+            enableThinking: apiConfig.enableThinking
           });
         }
 
@@ -569,7 +572,9 @@ class AIService {
           apiKey: apiConfig.apiKey,
           model: apiConfig.model,
           temperature: apiConfig.temperature,
-          maxTokens: apiConfig.maxTokens
+          maxTokens: apiConfig.maxTokens,
+          forceJsonOutput: apiConfig.forceJsonOutput,
+          enableThinking: apiConfig.enableThinking
         });
       }
 
@@ -616,7 +621,9 @@ class AIService {
             apiKey: apiConfig.apiKey,
             model: apiConfig.model,
             temperature: apiConfig.temperature,
-            maxTokens: apiConfig.maxTokens
+            maxTokens: apiConfig.maxTokens,
+            forceJsonOutput: apiConfig.forceJsonOutput,
+            enableThinking: apiConfig.enableThinking
           });
         }
 
@@ -639,7 +646,9 @@ class AIService {
           apiKey: apiConfig.apiKey,
           model: apiConfig.model,
           temperature: apiConfig.temperature,
-          maxTokens: apiConfig.maxTokens
+          maxTokens: apiConfig.maxTokens,
+          forceJsonOutput: apiConfig.forceJsonOutput,
+          enableThinking: apiConfig.enableThinking
         });
       }
 
@@ -661,6 +670,8 @@ class AIService {
       model: string;
       temperature?: number;
       maxTokens?: number;
+      forceJsonOutput?: boolean;
+      enableThinking?: boolean;
     }
   ): Promise<string> {
     console.log(`[AI服务] 使用指定API配置生成，provider: ${apiConfig.provider}, model: ${apiConfig.model}`);
@@ -676,7 +687,9 @@ class AIService {
         apiKey: apiConfig.apiKey,
         model: apiConfig.model,
         temperature: apiConfig.temperature ?? 0.7,
-        maxTokens: apiConfig.maxTokens ?? 8192  // 使用8192兼容DeepSeek等API
+        maxTokens: apiConfig.maxTokens ?? 8192,  // 使用8192兼容DeepSeek等API
+        forceJsonOutput: apiConfig.forceJsonOutput,
+        enableThinking: apiConfig.enableThinking
       };
 
       // 强制使用custom模式
@@ -703,6 +716,8 @@ class AIService {
       model: string;
       temperature?: number;
       maxTokens?: number;
+      forceJsonOutput?: boolean;
+      enableThinking?: boolean;
     }
   ): Promise<string> {
     console.log(`[AI服务] 使用指定API配置进行纯净生成，provider: ${apiConfig.provider}, model: ${apiConfig.model}`);
@@ -718,7 +733,9 @@ class AIService {
         apiKey: apiConfig.apiKey,
         model: apiConfig.model,
         temperature: apiConfig.temperature ?? 0.7,
-        maxTokens: apiConfig.maxTokens ?? 8192  // 使用8192兼容DeepSeek等API
+        maxTokens: apiConfig.maxTokens ?? 8192,  // 使用8192兼容DeepSeek等API
+        forceJsonOutput: apiConfig.forceJsonOutput,
+        enableThinking: apiConfig.enableThinking
       };
 
       // 强制使用custom模式
@@ -1228,6 +1245,17 @@ class AIService {
             console.log('[AI服务-OpenAI兼容] 启用JSON格式输出(降级非流式)');
           }
 
+          // 智谱AI (GLM) thinking 请求字段
+          if (provider === 'zhipu' && this.config.customAPI?.enableThinking) {
+            requestBody.thinking = { type: 'enabled' };
+            console.log('[AI服务-OpenAI兼容] 启用GLM thinking字段');
+          }else{
+            requestBody.thinking = { type: 'disabled' };
+            console.log('[AI服务-OpenAI流式] 未启用GLM thinking字段');
+          }
+
+          console.log('response data:',requestBody)
+
           const response = await axios.post(
             chatEndpoint,
             requestBody,
@@ -1262,6 +1290,12 @@ class AIService {
         if (responseFormat === 'json_object' && !isReasonerModel && !isClaudeModel && !isUnsupportedAPI) {
           requestBody.response_format = { type: 'json_object' };
           console.log('[AI服务-OpenAI兼容] 启用JSON格式输出(非流式)');
+        }
+
+        // 智谱AI (GLM) thinking 请求字段
+        if (provider === 'zhipu' && this.config.customAPI?.enableThinking) {
+          requestBody.thinking = { type: 'enabled' };
+          console.log('[AI服务-OpenAI兼容] 启用GLM thinking字段(非流式)');
         }
 
         const response = await axios.post(
@@ -1598,6 +1632,16 @@ class AIService {
       const reason = isReasonerModel ? 'reasoner模型' : isClaudeModel ? 'Claude模型' : '该API';
       console.log(`[AI服务-OpenAI流式] 跳过JSON格式输出（${reason}不支持）`);
     }
+
+    // 智谱AI (GLM) thinking 请求字段
+    if (provider === 'zhipu' && this.config.customAPI?.enableThinking) {
+      requestBody.thinking = { type: 'enabled' };
+      console.log('[AI服务-OpenAI流式] 启用GLM thinking字段');
+    }else{
+      requestBody.thinking = { type: 'disabled' };
+      console.log('[AI服务-OpenAI流式] 未启用GLM thinking字段');
+    }
+    console.log('response data:',requestBody)
 
     // 智谱AI使用不同的API路径
     const chatEndpoint = provider === 'zhipu'

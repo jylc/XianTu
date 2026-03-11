@@ -585,6 +585,28 @@
               </span>
             </div>
           </div>
+
+          <!-- Thinking模式选项（仅智谱AI） -->
+          <div
+            class="form-group"
+            v-if="editingAPI.provider === 'zhipu'"
+          >
+            <label class="checkbox-label">
+              <input
+                type="checkbox"
+                v-model="editingAPI.enableThinking"
+                class="form-checkbox"
+              />
+              <span>{{ t('启用Thinking模式') }}</span>
+            </label>
+            <div class="form-hint">
+              {{ t('启用后，GLM-4等支持Thinking的模型将显示思维链过程，增强推理能力。') }}
+              <br/>
+              <span class="hint-warning">
+                ℹ️ {{ t('仅支持智谱GLM-4系列模型（如glm-4-plus、glm-4-flash等）') }}
+              </span>
+            </div>
+          </div>
         </div>
         <div class="modal-footer">
           <button class="btn-cancel" @click="closeDialogs">{{ t('取消') }}</button>
