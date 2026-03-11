@@ -380,7 +380,8 @@ import FormattedText from '@/components/common/FormattedText.vue';
 import { useGameStateStore } from '@/stores/gameStateStore';
 import { getSnapshots } from '@/utils/snapshotManager';
 import type {  CharacterProfile } from '@/types/game';
-import type { GM_Response } from '@/types/AIGameMaster'; // AIGameMaster.d.ts 仍然需要保留
+import type { GM_Response } from '@/types/AIGameMaster';
+import { useAPIManagementStore } from '@/stores/apiManagementStore' // AIGameMaster.d.ts 仍然需要保留
 
 // 定义状态变更日志类型
 interface StateChangeLog {
@@ -609,6 +610,7 @@ const router = useRouter();
 const characterStore = useCharacterStore();
 const actionQueue = useActionQueueStore();
 const uiStore = useUIStore();
+const apiStore=useAPIManagementStore();
 let aiResetToken = 0;
 const gameStateStore = useGameStateStore();
 const isTavernEnvFlag = isTavernEnv();
@@ -755,7 +757,7 @@ const isImageFullScreen = ref(false);
 
 const generateSceneImage = async () => {
   if (isGeneratingImage.value) return;
-  
+
   const text = currentNarrative.value?.content;
   if (!text || text.length < 5) {
     toast.warning('当前剧情内容过少，无法生成');
@@ -1945,6 +1947,7 @@ watch(() => characterStore.rootState.当前激活存档, async (newSlotId, oldSl
 // 组件挂载时执行一次性初始化
 onMounted(async () => {
   try {
+    apiStore.loadFromStorage();
     // 一次性设置
     loadMemorySettings();
     restoreAIProcessingState();

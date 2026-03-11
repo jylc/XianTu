@@ -314,7 +314,11 @@ class AIBidirectionalSystemClass {
 
     if (!cleaned) return '';
     function removeSpacesAndLineBreaks(text: string): string {
-      return text.replace(/[ \r\n]+/g, "\\n").replace(/\\n+$/, '');
+      let result = text.replace(/[ \r\n]+/g, "\\n").replace(/\\n+$/, '');
+      if (!result.endsWith('\"}')) {
+        result += '\"}';
+      }
+      return result;
     }
 
 
@@ -334,7 +338,6 @@ class AIBidirectionalSystemClass {
         console.log('[世界事件] JSON解析失败，尝试提取代码块,原始文本:',cleaned)
         // JSON解析失败，尝试提取代码块
         const codeBlockMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)```/i);
-        console.log('codeBlockMatch?.[1]:',codeBlockMatch?.[1]);
         if (codeBlockMatch?.[1]) {
           cleaned=removeSpacesAndLineBreaks(codeBlockMatch?.[1]);
         }else{
@@ -342,7 +345,7 @@ class AIBidirectionalSystemClass {
         }
         console.log('[世界事件] 尝试提取代码块,移除空格与换行处理后文本:',cleaned)
         try {
-          const obj = JSON.parse(cleaned.trim()) as Record<string, unknown>;
+          const obj = JSON.parse(cleaned) as Record<string, unknown>;
           console.log('[世界事件] 尝试解析JSON:', obj)
           return String(obj.text || obj.叙事文本 || obj.narrative || '').trim();
         } catch {
