@@ -314,7 +314,7 @@ class AIBidirectionalSystemClass {
 
     if (!cleaned) return '';
     function removeSpacesAndLineBreaks(text: string): string {
-      return text.replace(/[ \r\n]+/g, "\\n");
+      return text.replace(/[ \r\n]+/g, "\\n").replace(/\\n+$/, '');
     }
 
 
@@ -334,29 +334,21 @@ class AIBidirectionalSystemClass {
         console.log('[世界事件] JSON解析失败，尝试提取代码块,原始文本:',cleaned)
         // JSON解析失败，尝试提取代码块
         const codeBlockMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)```/i);
-        cleaned=removeSpacesAndLineBreaks(cleaned);
-        console.log('[世界事件] 尝试提取代码块,处理后文本:',cleaned)
         console.log('codeBlockMatch?.[1]:',codeBlockMatch?.[1]);
         if (codeBlockMatch?.[1]) {
-          try {
-            const obj = JSON.parse(codeBlockMatch[1].trim()) as Record<string, unknown>;
-            console.log('[世界事件] 尝试解析JSON:', obj)
-            return String(obj.text || obj.叙事文本 || obj.narrative || '').trim();
-          } catch {
-            // 代码块内容本身就是文本
-            console.log('[世界事件] 代码块内容本身就是文本,处理后文本:',cleaned)
-            return codeBlockMatch[1].trim();
-          }
+          cleaned=removeSpacesAndLineBreaks(codeBlockMatch?.[1]);
         }else{
-          try {
-            const obj = JSON.parse(cleaned.trim()) as Record<string, unknown>;
-            console.log('[世界事件] 尝试解析JSON:', obj)
-            return String(obj.text || obj.叙事文本 || obj.narrative || '').trim();
-          } catch {
-            // 代码块内容本身就是文本
-            console.log('[世界事件] 代码块内容本身就是文本,处理后文本:',cleaned)
-            return cleaned.trim();
-          }
+          cleaned=removeSpacesAndLineBreaks(cleaned);
+        }
+        console.log('[世界事件] 尝试提取代码块,移除空格与换行处理后文本:',cleaned)
+        try {
+          const obj = JSON.parse(cleaned.trim()) as Record<string, unknown>;
+          console.log('[世界事件] 尝试解析JSON:', obj)
+          return String(obj.text || obj.叙事文本 || obj.narrative || '').trim();
+        } catch {
+          // 代码块内容本身就是文本
+          console.log('[世界事件] 代码块内容本身就是文本,处理后文本:',cleaned)
+          return cleaned.trim();
         }
       }
     }
