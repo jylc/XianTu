@@ -326,9 +326,18 @@ class AIBidirectionalSystemClass {
     if (cleaned.startsWith('{') || cleaned.includes('```')) {
       // 🔥 修复：如果 cleaned 没有以 } 结尾，尝试补全
       // 这可以处理 AI 输出被截断的情况
-      if (!cleaned.endsWith('}')) {
+      if (!cleaned.endsWith('\"}')) {
         console.log('[extractNarrativeText] 检测到未闭合的 JSON/对象，尝试补全 }');
-        cleaned += '}';
+        cleaned += '\"}';
+      }
+      // 将 {"text":" 与 ""}" 之间出现的所有 " 号换成 \"
+      const textStartIndex = cleaned.indexOf('{"text":"');
+      const textEndIndex = cleaned.lastIndexOf('\"}');
+      if (textStartIndex !== -1 && textEndIndex !== -1) {
+        const before = cleaned.substring(0, textStartIndex + '{"text":"'.length);
+        const middle = cleaned.substring(textStartIndex + '{"text":"'.length, textEndIndex);
+        const after = cleaned.substring(textEndIndex);
+        cleaned = before + middle.replace(/"/g, '\\"') + after;
       }
       try {
         const parsed = this.parseAIResponse(cleaned);

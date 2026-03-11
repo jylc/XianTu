@@ -38,6 +38,9 @@ export class GameMapManager {
   private initialPinchScale = 1;
   private pinchCenter = { x: 0, y: 0 };
 
+  // 视图状态保存键名
+  private static readonly STORAGE_KEY = 'gameMapViewportState';
+
   // 保存绑定的事件处理函数引用，用于正确移除监听器
   private boundOnDragStart: (e: MouseEvent) => void;
   private boundOnDragMove: (e: MouseEvent) => void;
@@ -120,8 +123,8 @@ export class GameMapManager {
     this.setupDragInteraction();
 
     // 初始化视图：先设置缩放，再居中（顺序很重要！）
-    this.setZoom(0.5, false);
-    this.centerTo(config.width / 2, config.height / 2, false);
+    // 尝试从 localStorage 恢复保存的视图状态
+    this.restoreViewportState();
 
     console.log('[地图管理器] 初始化完成', {
       worldSize: `${config.width}x${config.height}`,
@@ -476,6 +479,9 @@ export class GameMapManager {
     // 调整位置，使鼠标指向的世界坐标保持不变
     this.worldContainer.x = mouseX - worldPosX * clampedScale;
     this.worldContainer.y = mouseY - worldPosY * clampedScale;
+
+    // 保存视图状态
+    this.saveViewportState();
   }
 
   /**
@@ -1403,6 +1409,69 @@ export class GameMapManager {
   resize(width: number, height: number) {
     this.app.renderer.resize(width, height);
     console.log('[地图管理器] 调整大小:', `${width}x${height}`);
+  }
+
+  /**
+   * 保存视图状态到 localStorage
+   */
+  private saveViewportState() {
+    const state = this.getViewportState();
+    try {
+      localStorage.setItem(GameMapManager.STORAGE_KEY, JSON.stringify(state));
+      console.log('[地图管理器] 视图状态已保存:', state);
+    } catch (error) {
+      console.warn('[地图管理器] 保存视图状态失败:', error);
+    }
+  }
+
+  /**
+   * 从 localStorage 恢复视图状态
+   */
+  private restoreViewportState() {
+    try {
+      const savedState = localStorage.getItem(GameMapManager.STORAGE_KEY);
+      if (!savedState) {
+        console.log('[地图管理器] 未找到保存的视图状态，使用默认值');
+        // 使用默认值
+        this.setZoom(0.5, false);
+        this.centerTo(this.config.width / 2, this.config.height / 2, false);
+        return;
+      }
+
+      const state: ViewportState = JSON.parse(savedState);
+      console.log('[地图管理器] 恢复视图状态:', state);
+
+      // 验证状态数据的有效性
+      if (state && typeof state.x === 'number' && typeof state.y === 'number' && typeof state.scale === 'number') {
+        // 先恢复缩放
+        this.worldContainer.scale.set(state.scale);
+        // 再恢复中心点位置
+        this.worldContainer.x = this.app.screen.width / 2 - state.x * state.scale;
+        this.worldContainer.y = this.app.screen.height / 2 - state.y * state.scale;
+        console.log('[地图管理器] 视图状态恢复成功');
+      } else {
+        console.warn('[地图管理器] 保存的视图状态无效，使用默认值');
+        this.setZoom(0.5, false);
+        this.centerTo(this.config.width / 2, this.config.height / 2, false);
+      }
+    } catch (error) {
+      console.warn('[地图管理器] 恢复视图状态失败:', error);
+      // 出错时使用默认值
+      this.setZoom(0.5, false);
+      this.centerTo(this.config.width / 2, this.config.height / 2, false);
+    }
+  }
+
+  /**
+   * 清除保存的视图状态
+   */
+  static clearSavedViewportState() {
+    try {
+      localStorage.removeItem(GameMapManager.STORAGE_KEY);
+      console.log('[地图管理器] 已清除保存的视图状态');
+    } catch (error) {
+      console.warn('[地图管理器] 清除视图状态失败:', error);
+    }
   }
 
   /**
