@@ -607,6 +607,28 @@
               </span>
             </div>
           </div>
+
+          <!-- Coding Plan模式选项（仅智谱AI） -->
+          <div
+            class="form-group"
+            v-if="editingAPI.provider === 'zhipu'"
+          >
+            <label class="checkbox-label">
+              <input
+                type="checkbox"
+                v-model="editingAPI.enableCodingPlan"
+                class="form-checkbox"
+              />
+              <span>{{ t('启用Coding Plan模式') }}</span>
+            </label>
+            <div class="form-hint">
+              {{ t('启用后，将使用智谱AI的Coding Plan API端点，提供更强的代码生成能力。') }}
+              <br/>
+              <span class="hint-warning">
+                ℹ️ {{ t('将使用专用API端点：https://open.bigmodel.cn/api/coding/paas/v4') }}
+              </span>
+            </div>
+          </div>
         </div>
         <div class="modal-footer">
           <button class="btn-cancel" @click="closeDialogs">{{ t('取消') }}</button>
@@ -1055,7 +1077,9 @@ const saveAPI = () => {
       temperature: editingAPI.value.temperature || 0.7,
       maxTokens: editingAPI.value.maxTokens || 16000,
       enabled: true,
-      forceJsonOutput: editingAPI.value.forceJsonOutput || false
+      forceJsonOutput: editingAPI.value.forceJsonOutput || false,
+      enableThinking: editingAPI.value.enableThinking || false,
+      enableCodingPlan: editingAPI.value.enableCodingPlan || false
     };
     apiStore.addAPI(newConfig);
     toast.success(t('API配置已添加'));
@@ -1080,7 +1104,9 @@ const syncDefaultAPIToService = () => {
         model: defaultAPI.model,
         temperature: defaultAPI.temperature,
         maxTokens: defaultAPI.maxTokens,
-        forceJsonOutput: defaultAPI.forceJsonOutput
+        forceJsonOutput: defaultAPI.forceJsonOutput,
+        enableThinking: defaultAPI.enableThinking,
+        enableCodingPlan: defaultAPI.enableCodingPlan
       }
     });
   }

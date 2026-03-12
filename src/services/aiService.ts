@@ -32,6 +32,7 @@ export interface AIConfig {
     maxTokens?: number;
     forceJsonOutput?: boolean;
     enableThinking?: boolean;  // 启用Thinking模式（仅支持智谱GLM）
+    enableCodingPlan?: boolean;  // 启用Coding Plan模式（仅支持智谱GLM）
   };
 }
 
@@ -186,6 +187,36 @@ class AIService {
 
   private getAbortSignal(): AbortSignal | undefined {
     return this.abortController?.signal;
+  }
+
+  /**
+   * 安全读取错误响应文本（支持取消）
+   */
+  private async safeReadErrorText(response: Response): Promise<string> {
+    const signal = this.getAbortSignal();
+
+    if (!signal) {
+      return response.text();
+    }
+
+    if (signal.aborted) {
+      return '请求已被取消';
+    }
+
+    try {
+      return await Promise.race([
+        response.text(),
+        new Promise<string>((_, reject) => {
+          const listener = () => reject(new Error('请求已被取消'));
+          signal.addEventListener('abort', listener, { once: true });
+        })
+      ]);
+    } catch (e) {
+      if (e instanceof Error && e.message === '请求已被取消') {
+        return '请求已被取消';
+      }
+      return response.statusText || '未知错误';
+    }
   }
 
   private syncModeWithEnvironment() {
@@ -549,7 +580,8 @@ class AIService {
             temperature: apiConfig.temperature,
             maxTokens: apiConfig.maxTokens,
             forceJsonOutput: apiConfig.forceJsonOutput,
-            enableThinking: apiConfig.enableThinking
+            enableThinking: apiConfig.enableThinking,
+            enableCodingPlan: apiConfig.enableCodingPlan
           });
         }
 
@@ -574,7 +606,8 @@ class AIService {
           temperature: apiConfig.temperature,
           maxTokens: apiConfig.maxTokens,
           forceJsonOutput: apiConfig.forceJsonOutput,
-          enableThinking: apiConfig.enableThinking
+          enableThinking: apiConfig.enableThinking,
+          enableCodingPlan: apiConfig.enableCodingPlan
         });
       }
 
@@ -623,7 +656,8 @@ class AIService {
             temperature: apiConfig.temperature,
             maxTokens: apiConfig.maxTokens,
             forceJsonOutput: apiConfig.forceJsonOutput,
-            enableThinking: apiConfig.enableThinking
+            enableThinking: apiConfig.enableThinking,
+            enableCodingPlan: apiConfig.enableCodingPlan
           });
         }
 
@@ -648,7 +682,8 @@ class AIService {
           temperature: apiConfig.temperature,
           maxTokens: apiConfig.maxTokens,
           forceJsonOutput: apiConfig.forceJsonOutput,
-          enableThinking: apiConfig.enableThinking
+          enableThinking: apiConfig.enableThinking,
+          enableCodingPlan: apiConfig.enableCodingPlan
         });
       }
 
@@ -672,6 +707,7 @@ class AIService {
       maxTokens?: number;
       forceJsonOutput?: boolean;
       enableThinking?: boolean;
+      enableCodingPlan?: boolean;
     }
   ): Promise<string> {
     console.log(`[AI服务] 使用指定API配置生成，provider: ${apiConfig.provider}, model: ${apiConfig.model}`);
@@ -689,7 +725,8 @@ class AIService {
         temperature: apiConfig.temperature ?? 0.7,
         maxTokens: apiConfig.maxTokens ?? 8192,  // 使用8192兼容DeepSeek等API
         forceJsonOutput: apiConfig.forceJsonOutput,
-        enableThinking: apiConfig.enableThinking
+        enableThinking: apiConfig.enableThinking,
+        enableCodingPlan: apiConfig.enableCodingPlan
       };
 
       // 强制使用custom模式
@@ -718,6 +755,7 @@ class AIService {
       maxTokens?: number;
       forceJsonOutput?: boolean;
       enableThinking?: boolean;
+      enableCodingPlan?: boolean;
     }
   ): Promise<string> {
     console.log(`[AI服务] 使用指定API配置进行纯净生成，provider: ${apiConfig.provider}, model: ${apiConfig.model}`);
@@ -735,7 +773,8 @@ class AIService {
         temperature: apiConfig.temperature ?? 0.7,
         maxTokens: apiConfig.maxTokens ?? 8192,  // 使用8192兼容DeepSeek等API
         forceJsonOutput: apiConfig.forceJsonOutput,
-        enableThinking: apiConfig.enableThinking
+        enableThinking: apiConfig.enableThinking,
+        enableCodingPlan: apiConfig.enableCodingPlan
       };
 
       // 强制使用custom模式
@@ -1207,14 +1246,23 @@ class AIService {
     onStreamChunk?: (chunk: string) => void,
     responseFormat?: 'json_object'
   ): Promise<string> {
-    const { provider, url, apiKey, model, temperature, maxTokens } = this.config.customAPI!;
+    const { provider, url, apiKey, model, temperature, maxTokens, enableCodingPlan } = this.config.customAPI!;
     // 使用更保守的默认值8192，兼容更多API（如某些中转API限制为8192）
     const safeMaxTokens = this.clampMaxTokensForContext(provider, model, messages, maxTokens || 8192);
 
     // 智谱AI使用不同的API路径
-    const chatEndpoint = provider === 'zhipu'
-      ? `${url}/api/paas/v4/chat/completions`
-      : `${url}/v1/chat/completions`;
+    let chatEndpoint: string;
+    if (provider === 'zhipu') {
+      // 如果启用 Coding Plan，使用专用端点
+      if (enableCodingPlan) {
+        chatEndpoint = `https://open.bigmodel.cn/api/coding/paas/v4/chat/completions`;
+        console.log('[AI服务-OpenAI兼容] 使用智谱 Coding Plan API端点');
+      } else {
+        chatEndpoint = `${url}/api/paas/v4/chat/completions`;
+      }
+    } else {
+      chatEndpoint = `${url}/v1/chat/completions`;
+    }
 
     console.log(`[AI服务-OpenAI兼容] streaming=${streaming}, hasOnStreamChunk=${!!onStreamChunk}`);
 
@@ -1644,9 +1692,18 @@ class AIService {
     console.log('response data:',requestBody)
 
     // 智谱AI使用不同的API路径
-    const chatEndpoint = provider === 'zhipu'
-      ? `${url}/api/paas/v4/chat/completions`
-      : `${url}/v1/chat/completions`;
+    let chatEndpoint: string;
+    if (provider === 'zhipu') {
+      // 如果启用 Coding Plan，使用专用端点
+      if (this.config.customAPI?.enableCodingPlan) {
+        chatEndpoint = `https://open.bigmodel.cn/api/coding/paas/v4/chat/completions`;
+        console.log('[AI服务-OpenAI流式] 使用智谱 Coding Plan API端点');
+      } else {
+        chatEndpoint = `${url}/api/paas/v4/chat/completions`;
+      }
+    } else {
+      chatEndpoint = `${url}/v1/chat/completions`;
+    }
 
     const response = await fetch(chatEndpoint, {
       method: 'POST',
@@ -1660,12 +1717,19 @@ class AIService {
     });
 
     if (!response.ok) {
-      throw new Error(`API错误 ${response.status}: ${await response.text()}`);
+      const errorText = await this.safeReadErrorText(response);
+      throw new Error(`API错误 ${response.status}: ${errorText}`);
     }
 
     const contentType = response.headers.get('content-type') || '';
     if (!contentType.includes('text/event-stream')) {
       throw new Error(`Stream unsupported (content-type=${contentType || 'unknown'})`);
+    }
+
+    // 检查取消状态
+    if (this.isAborted || this.getAbortSignal()?.aborted) {
+      console.log('[AI服务-OpenAI流式] 请求已取消，停止处理');
+      throw new Error('请求已取消');
     }
 
     // DeepSeek Reasoner 状态追踪
@@ -1753,12 +1817,19 @@ class AIService {
     });
 
     if (!response.ok) {
-      throw new Error(`Claude API错误 ${response.status}: ${await response.text()}`);
+      const errorText = await this.safeReadErrorText(response);
+      throw new Error(`Claude API错误 ${response.status}: ${errorText}`);
     }
 
     const contentType = response.headers.get('content-type') || '';
     if (!contentType.includes('text/event-stream')) {
       throw new Error(`Stream unsupported (content-type=${contentType || 'unknown'})`);
+    }
+
+    // 检查取消状态
+    if (this.isAborted || this.getAbortSignal()?.aborted) {
+      console.log('[AI服务-Claude流式] 请求已取消，停止处理');
+      throw new Error('请求已取消');
     }
 
     // Claude thinking 状态追踪
@@ -1823,12 +1894,19 @@ class AIService {
     });
 
     if (!response.ok) {
-      throw new Error(`Gemini API错误 ${response.status}: ${await response.text()}`);
+      const errorText = await this.safeReadErrorText(response);
+      throw new Error(`Gemini API错误 ${response.status}: ${errorText}`);
     }
 
     const contentType = response.headers.get('content-type') || '';
     if (!contentType.includes('text/event-stream')) {
       throw new Error(`Stream unsupported (content-type=${contentType || 'unknown'})`);
+    }
+
+    // 检查取消状态
+    if (this.isAborted || this.getAbortSignal()?.aborted) {
+      console.log('[AI服务-Gemini流式] 请求已取消，停止处理');
+      throw new Error('请求已取消');
     }
 
     // Gemini thinking 状态追踪
@@ -1873,10 +1951,17 @@ class AIService {
       throw new Error('无法获取响应流');
     }
 
+    const abortSignal = this.getAbortSignal();
+    if (abortSignal?.aborted) {
+      reader.releaseLock();
+      throw new Error('请求已被取消');
+    }
+
     const decoder = new TextDecoder();
     let rawFullText = '';
     let buffer = '';
     let chunkCount = 0;
+    let abortListener: (() => void) | null = null;
 
     // 立即发送内容到前端（真流式，不做任何过滤）
     const sendChunk = (text: string) => {
@@ -1889,17 +1974,67 @@ class AIService {
       }
     };
 
+    // 清理函数：取消事件监听器并释放 reader
+    const cleanup = async () => {
+      if (abortListener && abortSignal) {
+        abortSignal.removeEventListener('abort', abortListener);
+        abortListener = null;
+      }
+      try {
+        await reader.cancel();
+      } catch {
+        // ignore
+      }
+      reader.releaseLock();
+    };
+
     try {
       while (true) {
-        if (this.isAborted) {
-          try { await reader.cancel(); } catch { /* ignore */ }
+        // 检查取消状态
+        if (this.isAborted || abortSignal?.aborted) {
+          console.log('[AI服务-流式] 检测到取消请求，停止流读取');
           throw new Error('请求已取消');
         }
 
-        const { done, value } = await reader.read();
-        if (done) break;
+        // 使用 AbortSignal 的 race 模式来实现立即取消
+        const readPromise = reader.read();
 
-        buffer += decoder.decode(value, { stream: true });
+        if (abortSignal) {
+          // 创建可取消的 abort promise
+          const abortPromise = new Promise<never>((_, reject) => {
+            abortListener = () => {
+              reject(new Error('请求已被取消'));
+            };
+            abortSignal.addEventListener('abort', abortListener, { once: true });
+          });
+
+          try {
+            const result = await Promise.race([readPromise, abortPromise]);
+            const { done, value } = result;
+
+            // 移除事件监听器
+            if (abortListener) {
+              abortSignal.removeEventListener('abort', abortListener);
+              abortListener = null;
+            }
+
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+          } catch (raceError) {
+            // 移除事件监听器
+            if (abortListener) {
+              abortSignal.removeEventListener('abort', abortListener);
+              abortListener = null;
+            }
+            throw raceError;
+          }
+        } else {
+          const { done, value } = await readPromise;
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+        }
+
         const lines = buffer.split('\n');
         buffer = lines.pop() || '';
 
@@ -1924,7 +2059,7 @@ class AIService {
         }
       }
     } finally {
-      reader.releaseLock();
+      await cleanup();
     }
 
     console.log(`[AI服务-流式] 完成，总长度: ${rawFullText.length}`);

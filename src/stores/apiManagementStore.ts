@@ -21,6 +21,7 @@ export interface APIConfig {
   enabled: boolean;
   forceJsonOutput?: boolean;  // 强制JSON格式输出（仅支持OpenAI兼容API，如DeepSeek）
   enableThinking?: boolean;  // 启用Thinking模式（仅支持智谱GLM）
+  enableCodingPlan?: boolean;  // 启用Coding Plan模式（仅支持智谱GLM）
 }
 
 export type APIUsageType =

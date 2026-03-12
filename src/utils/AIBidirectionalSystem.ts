@@ -1085,6 +1085,15 @@ ${stateToonString}
           });
         };
 
+        // 检查是否为用户主动取消的错误
+        const isUserAbortError = (error: unknown): boolean => {
+          if (error instanceof Error) {
+            const msg = error.message.toLowerCase();
+            return msg.includes('取消') || msg.includes('abort') || msg.includes('cancelled');
+          }
+          return false;
+        };
+
         // ========== 第1步：正文生成（失败重试1次） ==========
         options?.onProgressUpdate?.('分步生成：第1步（正文）…');
         const systemPromptStep1 = await buildSplitSystemPrompt(1);
@@ -1105,6 +1114,11 @@ ${stateToonString}
             if (step1Text.trim().length > 0) break;
             step1Text = '';
           } catch (e) {
+            // 如果是用户主动取消，立即跳出循环并重新抛出
+            if (isUserAbortError(e)) {
+              console.log('[分步生成] 用户取消请求，停止第1步');
+              throw e;
+            }
             console.warn(`[分步生成] 第1步第${attempt}次失败:`, e);
           }
         }
@@ -1145,6 +1159,11 @@ ${step1Text}
             if (parsedStep2.tavern_commands && parsedStep2.tavern_commands.length > 0) break;
             parsedStep2 = null;
           } catch (e) {
+            // 如果是用户主动取消，立即跳出循环并重新抛出
+            if (isUserAbortError(e)) {
+              console.log('[分步生成] 用户取消请求，停止第2步');
+              throw e;
+            }
             console.warn(`[分步生成] 第2步第${attempt}次失败:`, e);
           }
         }
