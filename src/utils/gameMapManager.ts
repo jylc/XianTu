@@ -205,6 +205,8 @@ export class GameMapManager {
         this.handleClick(e);
       } else {
         console.log('[地图管理器] 判定为拖拽事件，不触发点击');
+        // 拖拽结束后保存视图状态
+        this.saveViewportState();
       }
     }
 
@@ -436,7 +438,8 @@ export class GameMapManager {
   private onTouchEnd(e: TouchEvent) {
     // 如果还有触摸点，可能是从双指变为单指
     if (e.touches.length === 1 && this.isPinching) {
-      // 从双指缩放切换到单指拖拽
+      // 从双指缩放切换到单指拖拽，保存缩放后的状态
+      this.saveViewportState();
       this.isPinching = false;
       this.isDragging = true;
       const touch = e.touches[0];
@@ -444,7 +447,10 @@ export class GameMapManager {
       this.lastPosition = { x: this.worldContainer.x, y: this.worldContainer.y };
       this.dragDistance = 0;
     } else if (e.touches.length === 0) {
-      // 所有触摸结束
+      // 所有触摸结束，保存视图状态
+      if (this.isDragging || this.isPinching) {
+        this.saveViewportState();
+      }
       this.isDragging = false;
       this.isPinching = false;
     }
@@ -712,6 +718,26 @@ export class GameMapManager {
     label.y = 32 * scale; // 调整标签位置
     label.eventMode = 'none';
     locationContainer.addChild(label);
+
+    // 添加坐标标签（在名称下方）
+    if (this.config.showCoordinates !== false) {
+      const coordX = location.coordinates?.x ?? 0;
+      const coordY = location.coordinates?.y ?? 0;
+      const coordLabel = new PIXI.Text(
+        `(${coordX.toFixed(0)}, ${coordY.toFixed(0)})`,
+        {
+          fontFamily: 'Microsoft YaHei, SimHei, sans-serif',
+          fontSize: 22 * scale,
+          fill: 0x9ca3af,
+          fontWeight: '400',
+          align: 'center',
+        }
+      );
+      coordLabel.anchor.set(0.5, 0);
+      coordLabel.y = 65 * scale;
+      coordLabel.eventMode = 'none';
+      locationContainer.addChild(coordLabel);
+    }
 
     // 存储用户数据，用于点击检测
     (locationContainer as any).userData = {
@@ -1478,6 +1504,9 @@ export class GameMapManager {
    * 销毁
    */
   destroy() {
+    // 在销毁前保存视图状态
+    this.saveViewportState();
+
     // 1. 移除 canvas 事件监听器
     const canvas = this.app.view as HTMLCanvasElement;
     canvas.removeEventListener('mousedown', this.boundOnDragStart);

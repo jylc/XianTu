@@ -98,3 +98,37 @@ export interface WorldMapConfig {
   minLat: number; // Minimum y
   maxLat: number; // Maximum y
 }
+
+/**
+ * 地图视图状态
+ * 用于保存和恢复地图的缩放、位置等视图状态
+ */
+export interface MapViewState {
+  /** 视图中心点在世界坐标系中的 X 位置 */
+  centerX: number;
+  /** 视图中心点在世界坐标系中的 Y 位置 */
+  centerY: number;
+  /** 当前缩放级别 */
+  scale: number;
+  /** 视口宽度（像素） */
+  screenWidth: number;
+  /** 视口高度（像素） */
+  screenHeight: number;
+  /** 状态保存时间戳 */
+  timestamp?: number;
+}
+
+/**
+ * 地图持久化配置
+ * 用于控制地图视图状态的持久化行为
+ */
+export interface MapPersistenceConfig {
+  /** 是否启用视图状态持久化 */
+  enabled: boolean;
+  /** 存储键名（用于 localStorage） */
+  storageKey: string;
+  /** 自动保存间隔（毫秒），0 表示仅在特定事件时保存 */
+  autoSaveInterval: number;
+  /** 是否在页面卸载前保存状态 */
+  saveBeforeUnload: boolean;
+}

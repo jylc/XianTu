@@ -18,6 +18,7 @@ export interface GameMapConfig {
   tileSize: number // 网格大小
   minZoom?: number // 最小缩放级别
   maxZoom?: number // 最大缩放级别
+  showCoordinates?: boolean // 是否显示地点坐标
 }
 
 /**

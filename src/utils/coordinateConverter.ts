@@ -69,6 +69,12 @@ export function normalizeLocationsData(locations: any[], mapSize?: Partial<MapSi
         x: clampValue(Number(loc.位置.x), 0, mapWidth),
         y: clampValue(Number(loc.位置.y), 0, mapHeight),
       };
+    } else if (loc.坐标?.x !== undefined && loc.坐标?.y !== undefined) {
+      // 支持中文「坐标」字段（addWorldLocation 使用此字段名）
+      coordinates = {
+        x: clampValue(Number(loc.坐标.x), 0, mapWidth),
+        y: clampValue(Number(loc.坐标.y), 0, mapHeight),
+      };
     } else {
       // 缺失坐标时随机生成，确保分散
       coordinates = generateRandomCoords(

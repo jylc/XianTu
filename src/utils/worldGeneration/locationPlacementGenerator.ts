@@ -29,6 +29,8 @@ export interface LocationPlacementParams {
   existingLocations: Array<{ 名称?: string; name?: string; 坐标?: { x: number; y: number }; x?: number; y?: number }>;
   /** 地图宽高（用于坐标约束） */
   mapSize: { width: number; height: number };
+  /** NPC 当前显示在地图上的坐标（作为生成新地点的参考点） */
+  npcCurrentCoordinates?: { x: number; y: number };
 }
 
 export interface LocationPlacementResult {
@@ -87,6 +89,7 @@ export async function generateLocationPlacement(
     npcFaction,
     existingLocations,
     mapSize,
+    npcCurrentCoordinates,
   } = params;
 
   // 读取用户自定义提示词基础部分
@@ -107,6 +110,13 @@ export async function generateLocationPlacement(
     boundsHint = `地图总范围：x ∈ [1000, ${mapSize.width - 1000}]，y ∈ [1000, ${mapSize.height - 1000}]`;
   }
 
+  // NPC 当前显示坐标参考（确保新地点位置与 NPC 显示位置一致）
+  let coordRefHint = '';
+  if (npcCurrentCoordinates && Number.isFinite(npcCurrentCoordinates.x) && Number.isFinite(npcCurrentCoordinates.y)) {
+    const radius = 150; // 允许的偏差范围
+    coordRefHint = `\n【核心参考】NPC 当前显示在坐标 (${npcCurrentCoordinates.x.toFixed(0)}, ${npcCurrentCoordinates.y.toFixed(0)})。\n新地点应以此坐标为中心生成，偏差范围控制在 ${radius} 像素以内。这样可以确保添加地点后，NPC 的显示位置不会发生跳变。`;
+  }
+
   // 已有地点列表（防止重叠）
   const existingList = existingLocations
     .slice(0, 30) // 最多 30 个，避免 token 过多
@@ -124,6 +134,7 @@ export async function generateLocationPlacement(
 位置描述路径：${locationDesc}
 所属大陆：${continentName}
 ${boundsHint}
+${coordRefHint}
 
 【相关 NPC 信息】
 NPC：${npcName}
@@ -154,6 +165,7 @@ ${existingList || '暂无'}
     } else {
       responseText = String(response);
     }
+    console.log('[AI] Location Placement:', responseText);
 
     // 移除 thinking 标签
     const cleaned = responseText
@@ -196,6 +208,7 @@ ${existingList || '暂无'}
       finalX = Math.max(100, Math.min(mapSize.width - 100, finalX));
       finalY = Math.max(100, Math.min(mapSize.height - 100, finalY));
     }
+    console.log(`[地点定位] 成功生成地点: ${locationName},坐标: (${ Math.round(finalX)},${ Math.round(finalY)})`);
 
     return {
       success: true,

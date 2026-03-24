@@ -195,6 +195,26 @@ function resolvePreferredRealmKey(): string | undefined {
   return highest || props.activeRealmKey;
 }
 
+/**
+ * 计算 NPC 当前显示在地图上的坐标
+ * 与 GameMapPanel 中的 resolveNpcCoordinates fallback 逻辑一致
+ * 当地点未收录时，NPC 显示在大陆重心位置
+ */
+function calculateNpcCurrentDisplayCoordinates(
+  continentName: string,
+  continentBounds?: { x: number; y: number }[]
+): { x: number; y: number } | undefined {
+  if (!continentBounds || continentBounds.length === 0) return undefined;
+
+  // 计算大陆重心（与 GameMapPanel 中的 fallback 逻辑一致）
+  const cx = continentBounds.reduce((s, p) => s + (p.x ?? 0), 0) / continentBounds.length;
+  const cy = continentBounds.reduce((s, p) => s + (p.y ?? 0), 0) / continentBounds.length;
+
+  if (!Number.isFinite(cx) || !Number.isFinite(cy)) return undefined;
+
+  return { x: cx, y: cy };
+}
+
 async function handleAdd(npc: UnmappedNpc) {
   npcStates.value.set(npc.npcName, 'loading');
   npcErrors.value.delete(npc.npcName);
@@ -218,6 +238,12 @@ async function handleAdd(npc: UnmappedNpc) {
     height: Number(mapCfg?.height) || 10000,
   };
 
+  // 计算 NPC 当前显示坐标（用于新地点定位参考）
+  const npcCurrentCoords = calculateNpcCurrentDisplayCoordinates(
+    npc.continentName,
+    npc.continentBounds
+  );
+
   const result = await generateLocationPlacement({
     locationName: npc.locationHint,
     locationDesc: npc.locationDesc,
@@ -228,6 +254,7 @@ async function handleAdd(npc: UnmappedNpc) {
     npcFaction: faction,
     existingLocations,
     mapSize: mapConfig,
+    npcCurrentCoordinates: npcCurrentCoords,
   });
 
   if (result.success && result.location) {
