@@ -574,6 +574,11 @@ export const useGameStateStore = defineStore('gameState', {
       })();
 
       const v3: any = {
+        世界: {
+          信息: this.worldInfo ?? {},
+          //...(this.realmMapCollection ? { 地图集: this.realmMapCollection } : {}),
+          状态: {},
+        },
         元数据: meta,
         角色: {
           身份: this.character,
@@ -594,11 +599,6 @@ export const useGameStateStore = defineStore('gameState', {
           宗门: sectNormalized,
           事件: this.eventSystem,
           记忆: this.memory,
-        },
-        世界: {
-          信息: this.worldInfo ?? {},
-          ...(this.realmMapCollection ? { 地图集: this.realmMapCollection } : {}),
-          状态: {},
         },
         系统: {
           配置: this.systemConfig ?? {},
