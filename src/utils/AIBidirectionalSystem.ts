@@ -700,6 +700,7 @@ class AIBidirectionalSystemClass {
         const { character: migratedCharacter, 人物属性, cleanedSocial } = migrateNarrativeCharacterState(stateForAI);
 
         const result: Record<string, unknown> = {
+          世界: stateForAI.世界,
           元数据: { 时间: stateForAI.元数据?.时间 },
           角色: migratedCharacter,
           社交: {
@@ -712,7 +713,6 @@ class AIBidirectionalSystemClass {
               长期记忆: stateForAI.社交?.记忆?.长期记忆,
             },
           },
-          世界: stateForAI.世界,
         };
 
         // 如果有人物属性数据，则添加到顶级结构中

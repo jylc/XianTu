@@ -1,7 +1,9 @@
 /**
  * 全局调试工具类
- * 根据设置控制调试信息的显示
+ * 根据设置控制调试信息的显示，同时将调试日志写入 IndexedDB 持久化
  */
+import { appendLog, startBuffer, stopBuffer, flushBuffer } from '@/utils/debugLogStorage';
+
 export class DebugLogger {
   private static instance: DebugLogger;
   private debugMode: boolean = false;
@@ -55,6 +57,12 @@ export class DebugLogger {
     if (this.consoleDebug) {
       console.log(`[调试] 调试模式${enabled ? '已启用' : '已禁用'}`);
     }
+    // 控制台调试开启时启动日志缓冲区
+    if (this.isConsoleDebugEnabled()) {
+      startBuffer();
+    } else {
+      stopBuffer();
+    }
   }
 
   /**
@@ -88,6 +96,7 @@ export class DebugLogger {
       } else {
         console.log(`[${component}] ${message}`);
       }
+      appendLog('log', component, message, data);
     }
   }
 
@@ -101,6 +110,7 @@ export class DebugLogger {
       } else {
         console.warn(`[${component}] ${message}`);
       }
+      appendLog('warn', component, message, data);
     }
   }
 
@@ -112,6 +122,10 @@ export class DebugLogger {
       console.error(`[${component}] ${message}`, error);
     } else {
       console.error(`[${component}] ${message}`);
+    }
+    // 调试模式下错误也写入日志
+    if (this.debugMode) {
+      appendLog('error', component, message, error);
     }
   }
 
@@ -169,6 +183,7 @@ export class DebugLogger {
       } else {
         console.info(`[${component}] ${message}`);
       }
+      appendLog('info', component, message, data);
     }
   }
 

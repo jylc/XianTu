@@ -264,6 +264,56 @@
             </div>
           </div>
 
+          <!-- 日志管理 -->
+          <div class="log-management" v-if="settings.debugMode && settings.consoleDebug">
+            <div class="setting-item">
+              <div class="setting-info">
+                <label class="setting-name">{{ t('日志管理') }}</label>
+                <span class="setting-desc">{{ t('调试日志持久化存储，按日期保存，支持下载和清理') }}</span>
+              </div>
+            </div>
+
+            <div class="log-stats" v-if="logStats">
+              <span>{{ t('日志统计') }}: {{ logStats.dayCount }} {{ t('天') }}, {{ logStats.totalEntries }} {{ t('条') }}</span>
+            </div>
+
+            <div class="log-controls">
+              <div class="log-date-list" v-if="logDates.length > 0">
+                <select v-model="selectedLogDate" class="setting-select log-date-select">
+                  <option value="">{{ t('选择日期...') }}</option>
+                  <option v-for="date in logDates" :key="date" :value="date">{{ date }}</option>
+                </select>
+              </div>
+
+              <div class="log-actions">
+                <button class="utility-btn" @click="handleDownloadLog" :disabled="!selectedLogDate">
+                  <Download :size="14" />
+                  {{ t('下载日志') }}
+                </button>
+                <button class="utility-btn" @click="handleDownloadAllLogs" :disabled="logDates.length === 0">
+                  {{ t('下载全部') }}
+                </button>
+                <button class="utility-btn" @click="handleCleanOldLogs" :disabled="logDates.length === 0">
+                  {{ t('清理旧日志') }}
+                </button>
+                <button class="utility-btn" @click="handleClearAllLogs" :disabled="logDates.length === 0">
+                  <Trash2 :size="14" />
+                  {{ t('清空') }}
+                </button>
+              </div>
+
+              <div class="log-retention" v-if="logDates.length > 0">
+                <label class="setting-desc">{{ t('保留天数') }}:
+                  <input type="number" v-model.number="logRetentionDays" min="1" max="90" class="log-retention-input" />
+                </label>
+              </div>
+            </div>
+
+            <div class="log-preview" v-if="logPreviewContent">
+              <pre class="log-preview-content">{{ logPreviewContent }}</pre>
+            </div>
+          </div>
+
           <div class="setting-item">
             <div class="setting-info">
               <label class="setting-name">{{ t('正则替换规则') }}</label>
@@ -346,6 +396,15 @@ import { ref, reactive, onMounted, watch, computed } from 'vue';
 import { Save, RotateCcw, Trash2, Download, Upload, FileText } from 'lucide-vue-next';
 import { toast } from '@/utils/toast';
 import { debug } from '@/utils/debug';
+import {
+  getLogStats,
+  getAllLogDates,
+  exportLogToFile,
+  exportAllLogs,
+  clearLogsBefore,
+  clearAllLogs,
+  getLogsByDate,
+} from '@/utils/debugLogStorage';
 import { useI18n } from '@/i18n';
 import TextReplaceRulesModal from '@/components/common/TextReplaceRulesModal.vue';
 import PromptManagementPanel from '@/components/dashboard/PromptManagementPanel.vue';
@@ -427,6 +486,111 @@ const loading = ref(false);
 const hasUnsavedChanges = ref(false);
 const showReplaceRulesModal = ref(false);
 const showPromptModal = ref(false);
+
+// 日志管理状态
+const logStats = ref<{ dayCount: number; totalEntries: number } | null>(null);
+const logDates = ref<string[]>([]);
+const selectedLogDate = ref('');
+const logPreviewContent = ref('');
+const logRetentionDays = ref(7);
+
+// 加载日志统计和日期列表
+const refreshLogData = async () => {
+  try {
+    logStats.value = await getLogStats();
+    logDates.value = await getAllLogDates();
+  } catch {
+    logStats.value = null;
+    logDates.value = [];
+  }
+};
+
+// 下载选中日期日志
+const handleDownloadLog = async () => {
+  if (!selectedLogDate.value) return;
+  try {
+    await exportLogToFile(selectedLogDate.value);
+    toast.success(`${t('日志已下载')}: ${selectedLogDate.value}`);
+  } catch (e) {
+    toast.error(t('下载日志失败'));
+  }
+};
+
+// 下载全部日志
+const handleDownloadAllLogs = async () => {
+  try {
+    await exportAllLogs();
+    toast.success(t('全部日志已下载'));
+  } catch (e) {
+    toast.error(t('下载日志失败'));
+  }
+};
+
+// 清理旧日志
+const handleCleanOldLogs = async () => {
+  try {
+    const deleted = await clearLogsBefore(logRetentionDays.value);
+    toast.success(t('已清理') + ` ${deleted} ` + t('天旧日志'));
+    await refreshLogData();
+    logPreviewContent.value = '';
+  } catch {
+    toast.error(t('清理日志失败'));
+  }
+};
+
+// 清空所有日志
+const handleClearAllLogs = async () => {
+  uiStore.showRetryDialog({
+    title: t('清空日志'),
+    message: t('确定要清空所有调试日志吗？此操作不可恢复。'),
+    confirmText: t('确认清空'),
+    cancelText: t('取消'),
+    onConfirm: async () => {
+      try {
+        await clearAllLogs();
+        toast.success(t('所有日志已清空'));
+        await refreshLogData();
+        logPreviewContent.value = '';
+        selectedLogDate.value = '';
+      } catch {
+        toast.error(t('清空日志失败'));
+      }
+    },
+    onCancel: () => {},
+  });
+};
+
+// 监听选中日期变化，预览日志
+watch(selectedLogDate, async (date) => {
+  if (!date) { logPreviewContent.value = ''; return; }
+  try {
+    const entries = await getLogsByDate(date);
+    if (entries.length === 0) {
+      logPreviewContent.value = t('该日期无日志');
+      return;
+    }
+    const lines = entries.slice(-50).map(e => {
+      const tag = `[${e.level.toUpperCase()}]`.padEnd(7);
+      return `${e.timestamp} ${tag} [${e.component}] ${e.message}${e.data ? '\n  ' + e.data : ''}`;
+    });
+    const header = `${date} - ${t('最近')} 50 ${t('条')} (共 ${entries.length} ${t('条')})\n`;
+    logPreviewContent.value = header + lines.join('\n');
+  } catch {
+    logPreviewContent.value = t('加载日志失败');
+  }
+});
+
+// 监听 consoleDebug 变化，刷新日志数据
+watch(() => settings.consoleDebug, async (enabled) => {
+  if (enabled) {
+    await refreshLogData();
+  } else {
+    logStats.value = null;
+    logDates.value = [];
+    logPreviewContent.value = '';
+    selectedLogDate.value = '';
+  }
+});
 
 const enabledReplaceRulesCount = computed(() => {
   const rules = (settings as any).replaceRules as TextReplaceRule[] | undefined;
@@ -832,6 +996,11 @@ onMounted(() => {
   debug.log('设置面板', '组件已加载');
   loadSettings();
   loadVectorMemoryConfig();
+
+  // 如果控制台调试已开启，加载日志数据
+  if (settings.debugMode && settings.consoleDebug) {
+    refreshLogData();
+  }
 
   // 初始加载时不再强制应用设置，以避免覆盖全局主题
   // applySettings(); // 移除此调用
@@ -1379,6 +1548,87 @@ input:checked + .switch-slider:before {
 .utility-btn.primary:hover {
   background: var(--color-primary-dark, #2563eb);
   border-color: var(--color-primary-dark, #2563eb);
+}
+
+/* 日志管理样式 */
+.log-management {
+  padding: 0.75rem 1.25rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.log-stats {
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+  margin-bottom: 0.5rem;
+  padding: 0.4rem 0.6rem;
+  background: var(--color-surface-light);
+  border-radius: 0.375rem;
+}
+
+.log-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.log-date-select {
+  width: 100%;
+  min-width: 0;
+}
+
+.log-actions {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.log-actions .utility-btn {
+  font-size: 0.8rem;
+  padding: 0.35rem 0.6rem;
+  gap: 0.3rem;
+}
+
+.log-actions .utility-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.log-retention {
+  font-size: 0.8rem;
+}
+
+.log-retention-input {
+  width: 50px;
+  padding: 0.2rem 0.4rem;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  font-size: 0.8rem;
+  text-align: center;
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+.log-preview {
+  margin-top: 0.5rem;
+}
+
+.log-preview-content {
+  max-height: 200px;
+  overflow-y: auto;
+  padding: 0.5rem;
+  background: #1e1e1e;
+  color: #d4d4d4;
+  border-radius: 0.375rem;
+  font-size: 0.7rem;
+  font-family: 'Consolas', 'Monaco', monospace;
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin: 0;
+  line-height: 1.4;
+}
+
+[data-theme='dark'] .log-stats {
+  background: #334155;
 }
 
 [data-theme='dark'] .form-input-inline {
