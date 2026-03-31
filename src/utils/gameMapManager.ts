@@ -1458,9 +1458,9 @@ export class GameMapManager {
       const savedState = localStorage.getItem(GameMapManager.STORAGE_KEY);
       if (!savedState) {
         console.log('[地图管理器] 未找到保存的视图状态，使用默认值');
-        // 使用默认值
-        this.setZoom(0.5, false);
-        this.centerTo(this.config.width / 2, this.config.height / 2, false);
+        // 使用默认值：定位到(0,0)，缩放0.1倍
+        this.setZoom(0.1, false);
+        this.centerTo(this.config.width/2, this.config.height/2, false);
         return;
       }
 
@@ -1477,14 +1477,14 @@ export class GameMapManager {
         console.log('[地图管理器] 视图状态恢复成功');
       } else {
         console.warn('[地图管理器] 保存的视图状态无效，使用默认值');
-        this.setZoom(0.5, false);
-        this.centerTo(this.config.width / 2, this.config.height / 2, false);
+        this.setZoom(0.1, false);
+        this.centerTo(this.config.width / 2, this.config.height / 2, false)
       }
     } catch (error) {
       console.warn('[地图管理器] 恢复视图状态失败:', error);
       // 出错时使用默认值
-      this.setZoom(0.5, false);
-      this.centerTo(this.config.width / 2, this.config.height / 2, false);
+      this.setZoom(0.1, false);
+      this.centerTo(this.config.width / 2, this.config.height / 2, false)
     }
   }
 
