@@ -1302,7 +1302,7 @@ class AIService {
             console.log('[AI服务-OpenAI流式] 未启用GLM thinking字段');
           }
 
-          console.log('response data:',requestBody)
+          console.log('request data:',requestBody)
 
           const response = await axios.post(
             chatEndpoint,
@@ -1354,7 +1354,7 @@ class AIService {
               'Authorization': `Bearer ${apiKey}`,
               'Content-Type': 'application/json'
             },
-            timeout: 120000,
+            timeout: 300000,
             signal: this.getAbortSignal()
           }
         );
@@ -1477,7 +1477,7 @@ class AIService {
               'anthropic-version': '2023-06-01',
               'Content-Type': 'application/json'
             },
-            timeout: 120000,
+            timeout: 300000,
             signal: this.getAbortSignal()
           }
         );
@@ -1583,7 +1583,7 @@ class AIService {
 
       return axios.post(requestUrl, requestBody, {
         headers,
-        timeout: 120000,
+        timeout: 300000,
         signal: this.getAbortSignal()
       });
     };
@@ -1689,7 +1689,7 @@ class AIService {
       requestBody.thinking = { type: 'disabled' };
       console.log('[AI服务-OpenAI流式] 未启用GLM thinking字段');
     }
-    console.log('response data:',requestBody)
+    console.log('request data:',requestBody)
 
     // 智谱AI使用不同的API路径
     let chatEndpoint: string;

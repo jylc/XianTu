@@ -14,17 +14,74 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Development Commands
 
 ```bash
-# Build
-pnpm build              # Production build
-pnpm build:single       # Single file build
-pnpm watch              # Development build with watch mode
-pnpm serve              # Development server
+# Build (requires Node.js >= 18)
+pnpm build           # Production build (outputs to dist/)
+pnpm build:single    # Single file build (inline JS into HTML for SillyTavern)
+pnpm watch           # Development build with watch mode (auto-rebuild on changes)
+pnpm serve           # Development server (http://localhost:8080 with hot reload)
 
 # Code Quality
-pnpm lint               # Lint and auto-fix
-pnpm lint:check         # Lint check only
-pnpm type-check         # TypeScript type checking
+pnpm lint            # ESLint with auto-fix
+pnpm lint:check      # ESLint check only (no auto-fix)
+pnpm type-check      # TypeScript type checking
 ```
+
+### Backend (Optional)
+
+Backend provides account/save APIs with SQLite (default) or PostgreSQL:
+
+```bash
+# From project root
+cp server/.env.example server/.env
+python -m pip install -r server/requirements.txt
+uvicorn server.main:app --reload --port 12345
+```
+
+## Code Style
+
+Configuration in `.editorconfig`, `.prettierrc.json`, and `eslint.config.ts`:
+- **Indentation**: 2 spaces
+- **Quotes**: Single quotes
+- **Semicolons**: Omitted
+- **Line width**: 100 characters
+- **End of line**: LF
+- **TypeScript strict mode**: Enabled
+
+ESLint rules of note:
+- `@typescript-eslint/no-unused-vars`: warn
+- `@typescript-eslint/no-explicit-any`: warn
+- Vue 3 SFC with `<script setup lang="ts">`
+
+## Build Configuration
+
+### Build Modes
+
+1. **Production** (`pnpm build`): Outputs `dist/XianTu.js` + `index.html`
+2. **Watch** (`pnpm watch`): Outputs `dist/index.html` with inlined JS, auto-rebuilds on changes
+3. **Single File** (`pnpm build:single`): Single HTML file with everything inlined for SillyTavern
+
+### Webpack Externals
+
+The following libraries are treated as external dependencies (must be available globally):
+
+| External | Global Variable | Source |
+|----------|----------------|--------|
+| jquery | `$` | SillyTavern / CDN |
+| lodash | `_` | SillyTavern / CDN |
+| toastr | `toastr` | SillyTavern / CDN |
+| vue | `Vue` | SillyTavern / CDN |
+| vue-router | `VueRouter` | SillyTavern / CDN |
+| yaml | `YAML` | SillyTavern / CDN |
+| zod | `z` | SillyTavern / CDN |
+
+This allows the game to run in SillyTavern's environment without duplicating dependencies.
+
+### Development Server
+
+The dev server runs on port 8080 with:
+- Hot module replacement
+- Proxy for `/api` requests to `https://back.ddct.top`
+- Full host access allowed (for iframe/embed scenarios)
 
 ## Architecture
 
@@ -159,3 +216,36 @@ Key routes:
 - localStorage debug flags: `dad_debug_tavern` → enable Tavern detection logging
 - Console patching: `src/utils/consolePatch.ts` patches console for colored logging
 - Toast notifications: `src/utils/toast.ts` for user feedback
+
+## CI/CD
+
+GitHub Actions workflows in `.github/workflows/`:
+
+| Workflow | Trigger | Purpose |
+|----------|---------|---------|
+| `ci.yml` | Push/PR | Run `type-check` + `build` |
+| `docker.yml` | Tag `v*` | Build & push Docker image to Docker Hub |
+| `release.yml` | Tag `v*` | Create GitHub Release with build artifacts |
+| `pages.yml` | Push to `master` | Deploy to GitHub Pages |
+
+## Project Structure
+
+```
+src/
+├── components/
+│   ├── character-creation/   # Character creation flow components
+│   ├── common/               # Shared UI components (modals, toasts, etc.)
+│   └── dashboard/            # In-game panels (MainGamePanel, SkillsPanel, etc.)
+├── services/                 # Business logic services (AI, embedding, backend API)
+├── stores/                   # Pinia stores for state management
+├── types/                    # TypeScript type definitions
+├── utils/                    # Utility functions and game systems
+│   └── prompts/              # AI prompt templates and assembly
+├── views/                    # Top-level page components
+├── router/                   # Vue Router configuration (memory history)
+└── main.ts                   # Application entry point
+
+webpack/                      # Webpack plugins (TavernLiveReloadPlugin)
+docs/                         # Additional documentation
+.github/workflows/            # CI/CD automation
+```
