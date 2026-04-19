@@ -420,6 +420,9 @@ const thinkingExpanded = computed(() => uiStore.thinkingExpanded);
 // 🔥 保存上一次的思维链内容（传输完成后仍可查看）
 const lastThinkingContent = ref('');
 
+// 🔥 保存流式阶段已显示的正文内容，供最终叙事复用（避免重新加载闪烁）
+const lastStreamedContent = ref('');
+
 // 🔥 流式内容解析状态（用于解析 <thinking> 标签）
 const streamParseState = ref({
   inThinking: false,
@@ -710,21 +713,25 @@ const showStateChanges = (log: StateChangeLog | undefined) => {
 };
 
 // 当前显示的叙述内容
-// 文本内容优先使用短期记忆最后一条，actionOptions和stateChanges从叙事历史获取
+// 文本内容优先使用流式阶段已显示的内容（避免重新加载闪烁），actionOptions和stateChanges从叙事历史获取
 const currentNarrative = computed(() => {
   const narrativeHistory = gameStateStore.narrativeHistory;
   const shortTermMemory = gameStateStore.memory?.短期记忆;
   const currentTimeString = formatCurrentTime();
 
-  // 优先从短期记忆获取文本内容
-  let content = '';
-  if (shortTermMemory && shortTermMemory.length > 0) {
-    // 短期记忆使用push添加，最新的在末尾
-    const latestMemory = shortTermMemory[shortTermMemory.length - 1];
-    content = latestMemory.replace(/^【.*?】\s*/, ''); // 移除时间前缀
-  } else if (narrativeHistory && narrativeHistory.length > 0) {
-    // 回退到叙事历史
-    content = narrativeHistory[narrativeHistory.length - 1].content.replace(/^【.*?】\s*/, '');
+  // 优先使用流式阶段已显示的内容（避免重新加载/闪烁）
+  let content = lastStreamedContent.value || '';
+
+  if (!content) {
+    // 回退到从 store 读取
+    if (shortTermMemory && shortTermMemory.length > 0) {
+      // 短期记忆使用push添加，最新的在末尾
+      const latestMemory = shortTermMemory[shortTermMemory.length - 1];
+      content = latestMemory.replace(/^【.*?】\s*/, ''); // 移除时间前缀
+    } else if (narrativeHistory && narrativeHistory.length > 0) {
+      // 回退到叙事历史
+      content = narrativeHistory[narrativeHistory.length - 1].content.replace(/^【.*?】\s*/, '');
+    }
   }
 
   // 从叙事历史获取actionOptions和stateChanges
@@ -1514,6 +1521,7 @@ const sendMessage = async () => {
   // 🔥 重置流式内容，准备接收新的流式输出
   uiStore.setStreamingContent('');
   rawStreamingContent.value = ''; // 清除原始流式内容
+  lastStreamedContent.value = ''; // 清除上一轮流式显示的正文
   streamingMessageIndex.value = 1; // 设置一个虚拟索引以启用流式处理
 
   // 使用优化的AI请求系统进行双向交互
@@ -1742,6 +1750,10 @@ const sendMessage = async () => {
       uiStore.setAIProcessing(false);
       streamingMessageIndex.value = null;
       uiStore.setCurrentGenerationId(null);
+      // 🔥 保存流式阶段已显示的正文内容，供最终叙事复用（避免重新加载闪烁）
+      if (streamingContent.value) {
+        lastStreamedContent.value = streamingContent.value;
+      }
       // 🔥 关键修复：清除流式内容，防止下次显示旧内容
       uiStore.resetStreamingState();
       rawStreamingContent.value = '';

@@ -237,8 +237,7 @@ export async function getLogStats(): Promise<{ dayCount: number; totalEntries: n
 function formatEntries(entries: LogEntry[]): string {
   return entries.map(e => {
     const levelTag = `[${e.level.toUpperCase()}]`.padEnd(7);
-    const base = `${e.timestamp} ${levelTag} [${e.component}] ${e.message}`;
-    return e.data ? `${base}\n  数据: ${e.data}` : base;
+    return `${e.timestamp} ${levelTag} [${e.component}] ${e.message}`;
   }).join('\n');
 }
 

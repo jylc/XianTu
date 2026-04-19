@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref, shallowRef, computed, type Component } from 'vue';
-import { sanitizeAITextForDisplay, extractTextFromJsonResponse } from '@/utils/textSanitizer';
+import { sanitizeAITextForDisplay, extractTextFromJsonResponse, extractStreamingTextContent } from '@/utils/textSanitizer';
 import { isBackendConfigured, fetchBackendVersion } from '@/services/backendConfig';
 
 interface RetryDialogConfig {
@@ -170,16 +170,14 @@ export const useUIStore = defineStore('ui', () => {
   // 🔥 流式响应状态管理
   function setStreamingContent(content: string) {
     rawStreamingContent.value = content;
-    // 🔥 流式过程中也尝试解析 JSON 提取 text 字段
-    const extracted = extractTextFromJsonResponse(content);
-    streamingContent.value = extracted || sanitizeAITextForDisplay(content);
+    // 使用流式专用提取函数，支持不完整 JSON
+    streamingContent.value = extractStreamingTextContent(content);
   }
 
   function appendStreamingContent(chunk: string) {
     rawStreamingContent.value += chunk;
-    // 🔥 流式过程中也尝试解析 JSON 提取 text 字段
-    const extracted = extractTextFromJsonResponse(rawStreamingContent.value);
-    streamingContent.value = extracted || sanitizeAITextForDisplay(rawStreamingContent.value);
+    // 使用流式专用提取函数，支持不完整 JSON
+    streamingContent.value = extractStreamingTextContent(rawStreamingContent.value);
   }
 
   function clearStreamingContent() {

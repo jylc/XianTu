@@ -149,3 +149,83 @@ export function extractTextFromJsonResponse(text: string): string {
 
   return cleaned;
 }
+
+/**
+ * 从流式累积文本中增量提取 {"text":"..."} 的 text 内容
+ *
+ * 与 extractTextFromJsonResponse 不同，此函数能处理不完整的 JSON（缺少闭合 }），
+ * 适用于流式输出场景：每收到一个 chunk 就调用一次，实时显示正文。
+ *
+ * - 检测到 {"text":" 前缀时，增量提取 text 值（处理 JSON 转义序列）
+ * - 未检测到 JSON 格式时（Tavern 纯文本模式），回退到 sanitizeAITextForDisplay
+ */
+export function extractStreamingTextContent(accumulated: string): string {
+  if (!accumulated) return '';
+
+  // 先移除 thinking 类标签（安全兜底）
+  const cleaned = accumulated
+    .replace(/<(?:ant[-_]?)?thinking>[\s\S]*?<\/(?:ant[-_]?)?thinking>/gi, '')
+    .replace(/<\/?(?:ant[-_]?)?thinking>/gi, '')
+    .replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, '')
+    .replace(/<\/?reasoning>/gi, '')
+    .replace(/<thought>[\s\S]*?<\/thought>/gi, '')
+    .replace(/<\/?thought>/gi, '')
+    .trim();
+
+  if (!cleaned) return '';
+
+  // 查找 {"text":" 前缀（可能有空格，用正则匹配）
+  const prefixMatch = cleaned.match(/\{\s*"text"\s*:\s*"/);
+  if (!prefixMatch) {
+    // 非 JSON 格式，按纯文本处理
+    return sanitizeAITextForDisplay(cleaned);
+  }
+
+  const prefixEnd = (prefixMatch.index ?? 0) + prefixMatch[0].length;
+
+  // 尝试完整 JSON 解析（流式结束时可能已完整）
+  try {
+    const jsonStart = cleaned.indexOf('{');
+    const jsonEnd = cleaned.lastIndexOf('}');
+    if (jsonEnd > jsonStart) {
+      const parsed = JSON.parse(cleaned.slice(jsonStart, jsonEnd + 1));
+      if (typeof parsed.text === 'string') return parsed.text;
+    }
+  } catch {
+    // JSON 不完整，走手动提取
+  }
+
+  // 手动提取：从 prefixEnd 开始，找到第一个未被转义的 " 作为结尾
+  // 如果找不到闭合引号，说明 text 值仍在流式中，取全部内容
+  const afterPrefix = cleaned.substring(prefixEnd);
+  let textEnd = -1;
+
+  for (let i = 0; i < afterPrefix.length; i++) {
+    if (afterPrefix[i] === '"') {
+      // 检查前面有多少个连续反斜杠
+      let backslashes = 0;
+      let j = i - 1;
+      while (j >= 0 && afterPrefix[j] === '\\') {
+        backslashes++;
+        j--;
+      }
+      // 偶数个反斜杠 → 引号未被转义 → 这就是 text 值的结尾
+      if (backslashes % 2 === 0) {
+        textEnd = i;
+        break;
+      }
+    }
+  }
+
+  const rawText = textEnd >= 0
+    ? afterPrefix.substring(0, textEnd)
+    : afterPrefix;
+
+  // 反转义 JSON 字符串中的转义序列
+  return rawText
+    .replace(/\\n/g, '\n')
+    .replace(/\\r/g, '\r')
+    .replace(/\\t/g, '\t')
+    .replace(/\\"/g, '"')
+    .replace(/\\\\/g, '\\');
+}
