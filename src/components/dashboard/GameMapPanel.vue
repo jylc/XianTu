@@ -1491,10 +1491,27 @@ watch(
  * 初始化地图 - 生成势力和地点
  */
 const initializeMap = async () => {
-  const worldInfo = getCurrentWorldInfo();
+  let worldInfo = getCurrentWorldInfo();
+
+  // 如果没有世界信息，创建一个默认结构以便初始化地图
   if (!worldInfo) {
-    toast.error('未找到世界信息');
-    return;
+    const charName = (gameStateStore.character as any)?.名字 || '修士';
+    worldInfo = {
+      世界名称: '天元大陆',
+      大陆信息: [],
+      势力信息: [],
+      地点信息: [],
+      世界背景: '一个充满灵气的修真世界，各大宗门林立，秘境遍布。',
+      世界纪元: '修真盛世',
+      生成时间: new Date().toISOString(),
+      特殊设定: [],
+      版本: '1.0',
+    } as WorldInfo;
+
+    // 先保存默认世界信息，使后续逻辑能正常读取
+    if (!saveCurrentWorldInfo(worldInfo)) {
+      return;
+    }
   }
 
   isInitializing.value = true;

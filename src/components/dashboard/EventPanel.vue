@@ -12,6 +12,9 @@
         <button class="tool-btn" @click="showConfig = !showConfig">
           {{ showConfig ? '隐藏配置' : '事件配置' }}
         </button>
+        <button v-if="events.length > 0" class="tool-btn" @click="toggleDisplayMode" :title="displayMode === 'list' ? '切换为流程图' : '切换为事件列表'">
+          {{ displayMode === 'list' ? '流程图' : '列表' }}
+        </button>
       </div>
     </div>
 
@@ -199,7 +202,8 @@
       </div>
     </div>
 
-    <div class="event-list">
+    <!-- 事件列表视图 -->
+    <div v-if="displayMode === 'list'" class="event-list">
       <div v-if="events.length === 0" class="empty-state">
         <div class="empty-title">暂无事件记录</div>
         <div class="empty-hint">事件会随游戏时间推进自动发生。</div>
@@ -236,14 +240,61 @@
         </div>
       </div>
     </div>
+
+    <!-- 流程图视图 -->
+    <div v-else class="flow-container">
+      <div class="flow-wrapper">
+        <VueFlow
+          v-model:nodes="flowNodes"
+          v-model:edges="flowEdges"
+          :node-types="nodeTypes"
+          :fit-view-on-init="true"
+          :default-viewport="{ zoom: 0.8, x: 0, y: 0 }"
+          :min-zoom="0.2"
+          :max-zoom="2"
+          @node-click="onFlowNodeClick"
+        >
+          <template #node-eventNode="nodeProps">
+            <EventFlowNode
+              :data="nodeProps.data"
+              @click="onFlowNodeClick($event)"
+              @delete="deleteEventById"
+            />
+          </template>
+          <Background :gap="20" :size="1" />
+          <Controls position="bottom-right" />
+          <MiniMap position="bottom-left" />
+        </VueFlow>
+      </div>
+    </div>
+
+    <!-- 事件详情弹窗 -->
+    <EventDetailPopover
+      :visible="showDetailPopover"
+      :event="selectedFlowEvent"
+      @close="showDetailPopover = false"
+      @delete="onDetailDelete"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, onMounted } from 'vue';
+import { computed, reactive, ref, onMounted, markRaw } from 'vue';
+import { VueFlow } from '@vue-flow/core';
+import { Background } from '@vue-flow/background';
+import { Controls } from '@vue-flow/controls';
+import { MiniMap } from '@vue-flow/minimap';
+import '@vue-flow/core/dist/style.css';
+import '@vue-flow/core/dist/theme-default.css';
+import '@vue-flow/controls/dist/style.css';
+import '@vue-flow/minimap/dist/style.css';
 import { useGameStateStore } from '@/stores/gameStateStore';
 import { useCharacterStore } from '@/stores/characterStore';
 import type { EventSystem, GameEvent, GameTime, CustomEventTemplate } from '@/types/game';
+import type { EventFlowNodeData } from '@/types/eventFlow';
+import { transformEventsToFlow, getFitViewPadding } from '@/utils/eventFlowTransformer';
+import EventFlowNode from './components/EventFlowNode.vue';
+import EventDetailPopover from './components/EventDetailPopover.vue';
 import { toast } from '@/utils/toast';
 
 const gameStateStore = useGameStateStore();
@@ -252,6 +303,17 @@ const characterStore = useCharacterStore();
 const showConfig = ref(false);
 const showAddCustomEvent = ref(false);
 const editingEventIndex = ref<number | null>(null);
+
+// 显示模式: 'list' 列表 | 'flow' 流程图
+const displayMode = ref<'list' | 'flow'>('list');
+
+// 流程图相关状态
+const showDetailPopover = ref(false);
+const selectedFlowEvent = ref<EventFlowNodeData | null>(null);
+
+const nodeTypes = {
+  eventNode: markRaw(EventFlowNode),
+};
 
 const eventSystem = computed<EventSystem>(() => gameStateStore.eventSystem);
 
@@ -265,6 +327,34 @@ const nextEventText = computed(() => {
   if (!t) return '';
   return formatGameTime(t);
 });
+
+// 流程图节点和边
+const flowResult = computed(() => {
+  const list = (eventSystem.value?.事件记录 || []) as GameEvent[];
+  return transformEventsToFlow(list);
+});
+const flowNodes = computed(() => flowResult.value.nodes);
+const flowEdges = computed(() => flowResult.value.edges);
+
+// 切换显示模式
+function toggleDisplayMode() {
+  displayMode.value = displayMode.value === 'list' ? 'flow' : 'list';
+}
+
+// 流程图节点点击 → 显示详情弹窗
+function onFlowNodeClick(event: any) {
+  const data = event?.data || event;
+  if (data && data.eventId) {
+    selectedFlowEvent.value = data as EventFlowNodeData;
+    showDetailPopover.value = true;
+  }
+}
+
+// 详情弹窗删除事件
+async function onDetailDelete(eventId: string) {
+  showDetailPopover.value = false;
+  await deleteEventById(eventId);
+}
 
 // 配置对象
 const config = reactive({
@@ -1189,5 +1279,18 @@ input:checked + .toggle-slider:before {
 .relation-item.faction {
   background: rgba(20, 184, 166, 0.12);
   color: #14b8a6;
+}
+
+/* 流程图视图 */
+.flow-container {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.flow-wrapper {
+  width: 100%;
+  height: 100%;
+  min-height: 400px;
 }
 </style>

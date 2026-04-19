@@ -504,15 +504,13 @@ const handleStreamChunk = (chunk: string) => {
   }
 };
 
-// 🔥 重置流式解析状态
+// 🔥 重置流式解析状态（仅在流式开始时调用，流式结束由 flushStreamBuffer + resetStreamingState 处理）
 const resetStreamParseState = () => {
-  // 保存当前思维链内容，以便传输完成后仍可查看
   if (uiStore.thinkingContent) {
     lastThinkingContent.value = uiStore.thinkingContent;
   }
   streamParseState.value = { inThinking: false, buffer: '' };
   uiStore.clearThinkingContent();
-  uiStore.clearStreamingContent();
 };
 
 const inputRef = ref<HTMLTextAreaElement>();
@@ -1747,16 +1745,34 @@ const sendMessage = async () => {
     // 🔥 统一清除AI处理状态（成功路径）
     if (!hasError) {
       console.log('[AI响应处理] 处理完成，清除AI处理状态');
+      // 🔥 先刷新流式解析缓冲区中的残余字符到 streamingContent
+      const parseState = streamParseState.value;
+      if (parseState.buffer) {
+        if (parseState.inThinking) {
+          uiStore.appendThinkingContent(parseState.buffer);
+        } else {
+          uiStore.appendStreamingContent(parseState.buffer);
+        }
+        parseState.buffer = '';
+        parseState.inThinking = false;
+      }
+
+      // 保存思维链内容
+      if (uiStore.thinkingContent) {
+        lastThinkingContent.value = uiStore.thinkingContent;
+      }
+
       uiStore.setAIProcessing(false);
       streamingMessageIndex.value = null;
       uiStore.setCurrentGenerationId(null);
-      // 🔥 保存流式阶段已显示的正文内容，供最终叙事复用（避免重新加载闪烁）
+      // 🔥 此时 streamingContent 已包含完整内容（含刚刷新的 buffer），保存供最终叙事复用
       if (streamingContent.value) {
         lastStreamedContent.value = streamingContent.value;
       }
-      // 🔥 关键修复：清除流式内容，防止下次显示旧内容
+      // 清除流式内容
       uiStore.resetStreamingState();
       rawStreamingContent.value = '';
+      streamParseState.value = { inThinking: false, buffer: '' };
       persistAIProcessingState();
     }
 

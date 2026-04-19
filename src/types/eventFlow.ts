@@ -21,12 +21,6 @@ export interface EventFlowEdgeData {
   sharedEntity?: string;
 }
 
-/** 事件流程图边数据 */
-export interface EventFlowEdgeData {
-  edgeType: 'timeline' | 'shared_person' | 'shared_faction';
-  sharedEntity?: string;
-}
-
 /** Vue Flow 节点类型 */
 export type EventFlowNode = Node<EventFlowNodeData>;
 
