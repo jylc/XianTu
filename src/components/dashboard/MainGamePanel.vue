@@ -1762,13 +1762,14 @@ const sendMessage = async () => {
         lastThinkingContent.value = uiStore.thinkingContent;
       }
 
-      uiStore.setAIProcessing(false);
-      streamingMessageIndex.value = null;
-      uiStore.setCurrentGenerationId(null);
-      // 🔥 此时 streamingContent 已包含完整内容（含刚刷新的 buffer），保存供最终叙事复用
+      // 🔥 先保存流式内容再切换状态，避免 Vue 响应式竞态导致闪烁
+      // 必须在 setAIProcessing(false) 之前赋值，否则 Area B computed 会回退到短期记忆文本
       if (streamingContent.value) {
         lastStreamedContent.value = streamingContent.value;
       }
+      uiStore.setAIProcessing(false);
+      streamingMessageIndex.value = null;
+      uiStore.setCurrentGenerationId(null);
       // 清除流式内容
       uiStore.resetStreamingState();
       rawStreamingContent.value = '';
