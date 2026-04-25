@@ -134,24 +134,38 @@
           :key="`${cell.gridX}-${cell.gridY}`"
           class="world-grid-cell"
           :class="getGridCellClasses(cell)"
+          :style="getContinentStyle(cell)"
           @click="!gridDragMoved && handleGridCellClick(cell)"
         >
-          <!-- 大陆名称（仅显示第一个大陆） -->
-          <template v-if="cell.continents.length > 0 && cell.locations.length === 0">
-            <div v-if="cell.gridY % 4 === 0 && cell.gridX % 4 === 0" class="wcell-continent">
-              {{ cell.continents[0] }}
-            </div>
-          </template>
           <!-- 地点 -->
           <template v-if="cell.locations.length > 0">
-            <div class="wcell-loc-icon">{{ gridLocationIcons[cell.locations[0]?.类型 || cell.locations[0]?.type] || '📍' }}</div>
+            <div class="wcell-loc-icon">
+              <template v-if="isFactionTypeLoc(cell.locations[0])">
+                <svg viewBox="0 0 24 24" width="14" height="14" class="sect-gate-icon">
+                  <path d="M2 22L9 10L12 14L15 8L22 22Z" fill="currentColor" opacity="0.18"/>
+                  <path d="M2 22L9 10L12 14L15 8L22 22" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+                  <path d="M9 22V16H15V22" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                  <path d="M8 16L12 12.5L16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+                </svg>
+              </template>
+              <template v-else>{{ getLocationIcon(cell.locations[0]) }}</template>
+            </div>
             <div class="wcell-loc-name">{{ cell.locations[0]?.名称 || cell.locations[0]?.name || '' }}</div>
           </template>
           <!-- 势力名称（无地点时显示） -->
           <template v-else-if="cell.factions.length > 0">
-            <div v-if="cell.gridY % 3 === 0 && cell.gridX % 3 === 0" class="wcell-faction">
-              {{ cell.factions[0] }}
+            <div class="wcell-fac-icon">
+              <template v-if="isFactionTypeStr(cell.factions[0].类型)">
+                <svg viewBox="0 0 24 24" width="14" height="14" class="sect-gate-icon">
+                  <path d="M2 22L9 10L12 14L15 8L22 22Z" fill="currentColor" opacity="0.18"/>
+                  <path d="M2 22L9 10L12 14L15 8L22 22" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+                  <path d="M9 22V16H15V22" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                  <path d="M8 16L12 12.5L16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+                </svg>
+              </template>
+              <template v-else>{{ getFactionIcon(cell.factions[0].类型) }}</template>
             </div>
+            <div class="wcell-fac-name">{{ cell.factions[0].name }}</div>
           </template>
           <!-- 玩家标记 -->
           <div v-if="cell.isPlayer" class="wcell-player">
@@ -387,6 +401,13 @@
         </button>
       </div>
       <div v-if="!legendCollapsed" class="legend-items">
+        <!-- 大陆颜色图例（仅网格视图） -->
+        <template v-if="useGridView">
+          <div v-for="c in continentLegend" :key="c.name" class="legend-item">
+            <span class="legend-dot" :style="{ backgroundColor: c.color }"></span>
+            <span>{{ c.name }}</span>
+          </div>
+        </template>
         <!-- 名山大川 -->
         <div class="legend-item">
           <Mountain :size="16" class="legend-icon mountain" />
@@ -394,7 +415,12 @@
         </div>
         <!-- 宗门势力 -->
         <div class="legend-item">
-          <Building2 :size="16" class="legend-icon faction" />
+          <svg viewBox="0 0 24 24" width="16" height="16" class="legend-icon faction sect-gate-icon">
+            <path d="M2 22L9 10L12 14L15 8L22 22Z" fill="currentColor" opacity="0.18"/>
+            <path d="M2 22L9 10L12 14L15 8L22 22" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+            <path d="M9 22V16H15V22" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+            <path d="M8 16L12 12.5L16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+          </svg>
           <span>宗门势力</span>
         </div>
         <!-- 城镇坊市 -->
@@ -537,7 +563,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue';
-import { Mountain, Building2, Store, Sparkles, Gem, AlertTriangle, Zap, User, Users, ChevronUp, ChevronDown, Plus, FileText, Menu, RefreshCw, Grid3x3 } from 'lucide-vue-next';
+import { Mountain, Store, Sparkles, Gem, AlertTriangle, Zap, User, Users, ChevronUp, ChevronDown, Plus, FileText, Menu, RefreshCw, Grid3x3 } from 'lucide-vue-next';
 import { GameMapManager } from '@/utils/gameMapManager';
 import { normalizeLocationsData, normalizeContinentBounds } from '@/utils/coordinateConverter';
 import { useGameStateStore } from '@/stores/gameStateStore';
@@ -1255,11 +1281,19 @@ const locationTypeNames: Record<string, string> = {
   special_other: '其他特殊',
   // 中文类型（新数据）
   '名山大川': '名山大川',
+  '宗门势力': '宗门势力',
+  '宗门': '宗门',
   '城镇坊市': '城镇坊市',
+  '城池': '城池',
+  '坊市': '坊市',
   '洞天福地': '洞天福地',
+  '洞府': '洞府',
   '奇珍异地': '奇珍异地',
+  '秘境': '秘境',
   '凶险之地': '凶险之地',
+  '险地': '险地',
   '其他特殊': '其他特殊',
+  '商会': '商会',
 };
 
 const getLocationTypeName = (type: string): string => {
@@ -1268,17 +1302,59 @@ const getLocationTypeName = (type: string): string => {
 
 // ─── 网格视图 ─────────────────────────────────────────────────────────────
 const useGridView = ref(true);
-const WORLD_GRID_SIZE = 20;
-const CELL_COORD_SIZE = 500; // 10000 / 20
+const WORLD_GRID_SIZE = 16;
+const CELL_COORD_SIZE = 625; // 10000 / 16
 
 interface WorldGridCell {
   gridX: number;
   gridY: number;
   continents: string[];
+  continentIndex: number;  // -1=无大陆，0/1/2...=大陆索引（用于着色）
   locations: any[];
-  factions: string[];
+  factions: Array<{ name: string; 类型: string }>;
   isPlayer: boolean;
 }
+
+/** 大陆配色（最多支持 8 个大陆） */
+const CONTINENT_COLORS = [
+  { bg: 'rgba(59, 130, 246, 0.10)', border: 'rgba(59, 130, 246, 0.25)', dot: '#3b82f6' },
+  { bg: 'rgba(16, 185, 129, 0.10)', border: 'rgba(16, 185, 129, 0.25)', dot: '#10b981' },
+  { bg: 'rgba(245, 158, 11, 0.10)', border: 'rgba(245, 158, 11, 0.25)', dot: '#f59e0b' },
+  { bg: 'rgba(168, 85, 247, 0.10)', border: 'rgba(168, 85, 247, 0.25)', dot: '#a855f7' },
+  { bg: 'rgba(236, 72, 153, 0.10)', border: 'rgba(236, 72, 153, 0.25)', dot: '#ec4899' },
+  { bg: 'rgba(20, 184, 166, 0.10)', border: 'rgba(20, 184, 166, 0.25)', dot: '#14b8a6' },
+  { bg: 'rgba(234, 88, 12, 0.10)',  border: 'rgba(234, 88, 12, 0.25)',  dot: '#ea580c' },
+  { bg: 'rgba(99, 102, 241, 0.10)', border: 'rgba(99, 102, 241, 0.25)', dot: '#6366f1' },
+];
+
+/** 获取大陆对应的内联样式 */
+const getContinentStyle = (cell: WorldGridCell) => {
+  if (cell.continentIndex < 0 || cell.continentIndex >= CONTINENT_COLORS.length) return {};
+  const c = CONTINENT_COLORS[cell.continentIndex];
+  return {
+    backgroundColor: c.bg,
+    borderColor: c.border,
+  };
+};
+
+/** 大陆图例数据 */
+const continentLegend = computed(() => {
+  const worldInfo = getCurrentWorldInfo();
+  if (!worldInfo?.大陆信息) return [];
+  return worldInfo.大陆信息.map((c: any, i: number) => ({
+    name: c.名称 || c.name || `大陆${i + 1}`,
+    color: CONTINENT_COLORS[i % CONTINENT_COLORS.length].dot,
+  }));
+});
+
+/** 地点类型图例 */
+const locationTypeLegend = computed(() => {
+  return Object.entries(gridLocationIcons).filter(([k]) => k === '名山大川' || k === '宗门势力' || k === '城镇坊市' || k === '洞天福地' || k === '奇珍异地' || k === '凶险之地').map(([type, icon]) => ({
+    type,
+    icon,
+    name: getLocationTypeName(type),
+  }));
+});
 
 /** 射线法判断点是否在多边形内 */
 function isPointInPolygon(px: number, py: number, polygon: { x: number; y: number }[]): boolean {
@@ -1298,16 +1374,65 @@ function isPointInPolygon(px: number, py: number, polygon: { x: number; y: numbe
 const gridLocationIcons: Record<string, string> = {
   natural_landmark: '⛰️', sect_power: '🏯', city_town: '🏘️',
   blessed_land: '✨', treasure_land: '💎', dangerous_area: '☠️', special_other: '🌀',
-  '名山大川': '⛰️', '宗门势力': '🏯', '城镇坊市': '🏘️',
-  '洞天福地': '✨', '奇珍异地': '💎', '凶险之地': '☠️', '其他特殊': '🌀',
+  '名山大川': '⛰️', '宗门势力': '🏯', '宗门': '🏯', '城镇坊市': '🏘️', '城池': '🏘️', '坊市': '🏘️',
+  '洞天福地': '✨', '洞府': '✨', '奇珍异地': '💎', '秘境': '💎', '凶险之地': '☠️', '险地': '☠️',
+  '其他特殊': '🌀', '商会': '🏪',
 };
+
+/** 根据地点数据获取图标（先精确匹配，再关键词模糊匹配） */
+function getLocationIcon(loc: any): string {
+  const rawType = String(loc?.类型 || loc?.type || '');
+  // 精确匹配
+  if (gridLocationIcons[rawType]) return gridLocationIcons[rawType];
+  // 关键词模糊匹配
+  if (rawType.includes('宗门') || rawType.includes('sect')) return '🏯';
+  if (rawType.includes('城') || rawType.includes('镇') || rawType.includes('坊') || rawType.includes('市')) return '🏘️';
+  if (rawType.includes('山') || rawType.includes('川') || rawType.includes('岭')) return '⛰️';
+  if (rawType.includes('洞') || rawType.includes('福') || rawType.includes('仙')) return '✨';
+  if (rawType.includes('秘') || rawType.includes('宝') || rawType.includes('珍') || rawType.includes('奇')) return '💎';
+  if (rawType.includes('险') || rawType.includes('凶') || rawType.includes('魔') || rawType.includes('妖')) return '☠️';
+  if (rawType.includes('商')) return '🏪';
+  return '📍';
+}
+
+/** 根据势力类型获取图标 */
+function getFactionIcon(factionType: string): string {
+  const t = String(factionType || '');
+  if (t.includes('宗门')) return '🏯';
+  if (t.includes('世家') || t.includes('家族')) return '🏯';
+  if (t.includes('商')) return '🏪';
+  if (t.includes('散修') || t.includes('联盟')) return '⚔️';
+  if (t.includes('妖') || t.includes('魔')) return '🔮';
+  return '🏯';
+}
+
+/** 判断地点数据是否为宗门/势力类型（使用山门图标） */
+function isFactionTypeLoc(loc: any): boolean {
+  const rawType = String(loc?.类型 || loc?.type || '');
+  return rawType.includes('宗门') || rawType.includes('世家') || rawType.includes('家族')
+    || rawType.includes('商会') || rawType.includes('联盟') || rawType.includes('势力')
+    || rawType.includes('妖族') || rawType.includes('魔道') || rawType.includes('sect')
+    || !!loc?._isFactionLocation;
+}
+
+/** 判断势力类型字符串是否为宗门/势力（使用山门图标） */
+function isFactionTypeStr(factionType: string): boolean {
+  const t = String(factionType || '');
+  return t.includes('宗门') || t.includes('世家') || t.includes('家族')
+    || t.includes('商会') || t.includes('联盟') || t.includes('势力')
+    || t.includes('妖族') || t.includes('魔道') || t.includes('sect');
+}
 
 /** 地点类型对应颜色 */
 const gridLocationColors: Record<string, string> = {
   natural_landmark: 'cyan', sect_power: 'gold', city_town: 'orange',
   blessed_land: 'limegreen', treasure_land: 'mediumpurple', dangerous_area: 'tomato', special_other: 'gray',
-  '名山大川': 'cyan', '城镇坊市': 'orange', '洞天福地': 'limegreen',
-  '奇珍异地': 'mediumpurple', '凶险之地': 'tomato', '其他特殊': 'gray',
+  '名山大川': 'cyan', '宗门势力': 'gold', '宗门': 'gold',
+  '城镇坊市': 'orange', '城池': 'orange', '坊市': 'orange',
+  '洞天福地': 'limegreen', '洞府': 'limegreen',
+  '奇珍异地': 'mediumpurple', '秘境': 'mediumpurple',
+  '凶险之地': 'tomato', '险地': 'tomato',
+  '其他特殊': 'gray', '商会': 'orange',
 };
 
 /** 将世界数据映射到 20×20 网格 */
@@ -1318,7 +1443,7 @@ const worldGridCells = computed<WorldGridCell[]>(() => {
   const cells: WorldGridCell[] = [];
   for (let gy = 0; gy < WORLD_GRID_SIZE; gy++) {
     for (let gx = 0; gx < WORLD_GRID_SIZE; gx++) {
-      cells.push({ gridX: gx, gridY: gy, continents: [], locations: [], factions: [], isPlayer: false });
+      cells.push({ gridX: gx, gridY: gy, continents: [], continentIndex: -1, locations: [], factions: [], isPlayer: false });
     }
   }
 
@@ -1326,20 +1451,22 @@ const worldGridCells = computed<WorldGridCell[]>(() => {
 
   // 映射大陆：格子中心点是否在大陆多边形内
   if (worldInfo.大陆信息) {
-    for (const continent of worldInfo.大陆信息) {
+    worldInfo.大陆信息.forEach((continent: any, ci: number) => {
       const bounds = continent.大洲边界 || continent.continent_bounds;
-      if (!bounds || bounds.length < 3) continue;
+      if (!bounds || bounds.length < 3) return;
       const name = continent.名称 || continent.name || '';
       for (let gy = 0; gy < WORLD_GRID_SIZE; gy++) {
         for (let gx = 0; gx < WORLD_GRID_SIZE; gx++) {
           const cx = gx * CELL_COORD_SIZE + CELL_COORD_SIZE / 2;
           const cy = gy * CELL_COORD_SIZE + CELL_COORD_SIZE / 2;
           if (isPointInPolygon(cx, cy, bounds)) {
-            getCell(gx, gy).continents.push(name);
+            const cell = getCell(gx, gy);
+            cell.continents.push(name);
+            cell.continentIndex = ci;  // 记录大陆索引用于着色
           }
         }
       }
-    }
+    });
   }
 
   // 映射地点：坐标映射到格子
@@ -1358,6 +1485,7 @@ const worldGridCells = computed<WorldGridCell[]>(() => {
   if (worldInfo.势力信息) {
     for (const faction of worldInfo.势力信息) {
       const name = faction.名称 || faction.name || '';
+      const ftype = faction.类型 || faction.type || '';
       const bounds = faction.势力范围 || faction.territoryBounds || faction.territory_bounds;
       if (!bounds || bounds.length < 3) continue;
       for (let gy = 0; gy < WORLD_GRID_SIZE; gy++) {
@@ -1365,9 +1493,40 @@ const worldGridCells = computed<WorldGridCell[]>(() => {
           const cx = gx * CELL_COORD_SIZE + CELL_COORD_SIZE / 2;
           const cy = gy * CELL_COORD_SIZE + CELL_COORD_SIZE / 2;
           if (isPointInPolygon(cx, cy, bounds)) {
-            getCell(gx, gy).factions.push(name);
+            getCell(gx, gy).factions.push({ name, 类型: ftype });
           }
         }
+      }
+
+      // 将势力作为地点标记添加到其中心位置
+      const factionLocX = resolveNumber(
+        (faction.位置 as any)?.x ?? faction.coordinates?.x ?? faction.坐标?.x
+      );
+      const factionLocY = resolveNumber(
+        (faction.位置 as any)?.y ?? faction.coordinates?.y ?? faction.坐标?.y
+      );
+      let locGx: number, locGy: number;
+      if (factionLocX !== null && factionLocY !== null) {
+        locGx = Math.min(WORLD_GRID_SIZE - 1, Math.max(0, Math.floor(factionLocX / CELL_COORD_SIZE)));
+        locGy = Math.min(WORLD_GRID_SIZE - 1, Math.max(0, Math.floor(factionLocY / CELL_COORD_SIZE)));
+      } else {
+        // 无坐标时从势力范围多边形计算中心点
+        const validBounds = (bounds as { x: number; y: number }[]).filter(
+          (p) => Number.isFinite(p.x) && Number.isFinite(p.y)
+        );
+        if (validBounds.length === 0) continue;
+        const centerX = validBounds.reduce((s, p) => s + p.x, 0) / validBounds.length;
+        const centerY = validBounds.reduce((s, p) => s + p.y, 0) / validBounds.length;
+        locGx = Math.min(WORLD_GRID_SIZE - 1, Math.max(0, Math.floor(centerX / CELL_COORD_SIZE)));
+        locGy = Math.min(WORLD_GRID_SIZE - 1, Math.max(0, Math.floor(centerY / CELL_COORD_SIZE)));
+      }
+      const targetCell = getCell(locGx, locGy);
+      // 避免与已有地点重复
+      const alreadyExists = targetCell.locations.some(
+        (l: any) => (l.名称 || l.name) === name
+      );
+      if (!alreadyExists) {
+        targetCell.locations.push({ ...faction, _isFactionLocation: true });
       }
     }
   }
@@ -1416,7 +1575,7 @@ const handleGridCellClick = (cell: WorldGridCell) => {
   }
   // 点击有势力的格子：找到对应势力数据并显示
   if (cell.factions.length > 0) {
-    const facName = cell.factions[0];
+    const facName = cell.factions[0].name;
     const worldInfo = getCurrentWorldInfo();
     const facData = worldInfo?.势力信息?.find((f: any) =>
       (f.名称 || f.name) === facName
@@ -2348,21 +2507,23 @@ const loadMapData = async (options?: { silent?: boolean; reset?: boolean }) => {
       console.log(`[地图] 已加载 ${worldInfo.大陆信息.length} 个大陆`);
     }
 
-    // 加载势力（带势力范围）
+    // 加载势力（带势力范围 + 地点标记）
     if (worldInfo.势力信息 && Array.isArray(worldInfo.势力信息)) {
       const factions = normalizeLocationsData(worldInfo.势力信息, mapConfig);
       factions.forEach((faction: WorldLocation) => {
         try {
-          // 只添加势力范围，不添加地点标记（避免与地点信息重复）
+          // 添加势力范围
           if (faction.territoryBounds && faction.territoryBounds.length >= 3) {
             mapManager.value?.addTerritory(faction);
           }
-          // 不再自动为势力创建地点标记，地点由"地点信息"数组统一管理
+          // 同时添加为地点标记
+          mapManager.value?.addLocation(faction);
+          locationCount++;
         } catch (error) {
           console.error('[地图] 加载势力失败:', faction, error);
         }
       });
-      console.log(`[地图] 已加载 ${factions.length} 个势力范围`);
+      console.log(`[地图] 已加载 ${factions.length} 个势力（范围+地点）`);
     }
 
     // 加载地点（包括所有类型）
@@ -3220,6 +3381,15 @@ canvas:active {
   color: #8b5cf6;
 }
 
+/* 大陆颜色圆点（图例中） */
+.legend-dot {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
 @keyframes pulse-player {
   0%, 100% {
     opacity: 1;
@@ -3369,15 +3539,15 @@ canvas:active {
 
 .world-grid-map {
   display: grid;
-  gap: 2px;
-  width: min(90%, 640px);
+  gap: 1px;
+  width: min(80%, 480px);
   aspect-ratio: 1;
   flex-shrink: 0;
 }
 
 .world-grid-cell {
   position: relative;
-  border-radius: 3px;
+  border-radius: 2px;
   border: 1px solid rgba(255, 255, 255, 0.04);
   background: rgba(255, 255, 255, 0.015);
   cursor: pointer;
@@ -3397,11 +3567,7 @@ canvas:active {
   background: rgba(255, 255, 255, 0.04);
 }
 
-/* 大陆格子 */
-.world-grid-cell.has-continent {
-  background: rgba(59, 130, 246, 0.06);
-  border-color: rgba(59, 130, 246, 0.15);
-}
+/* 大陆格子 — 背景色由 getContinentStyle() 内联样式控制 */
 
 /* 势力格子（无地点时） */
 .world-grid-cell.has-faction {
@@ -3422,15 +3588,22 @@ canvas:active {
 .world-grid-cell.loc-名山大川,
 .world-grid-cell.loc-natural_landmark { border-color: rgba(8, 145, 178, 0.45); background: rgba(8, 145, 178, 0.06); }
 .world-grid-cell.loc-宗门势力,
+.world-grid-cell.loc-宗门,
 .world-grid-cell.loc-sect_power     { border-color: rgba(202, 138, 4, 0.45); background: rgba(202, 138, 4, 0.06); }
 .world-grid-cell.loc-城镇坊市,
+.world-grid-cell.loc-城池,
+.world-grid-cell.loc-坊市,
 .world-grid-cell.loc-city_town       { border-color: rgba(234, 88, 12, 0.45); background: rgba(234, 88, 12, 0.06); }
 .world-grid-cell.loc-洞天福地,
+.world-grid-cell.loc-洞府,
 .world-grid-cell.loc-blessed_land    { border-color: rgba(22, 163, 74, 0.45); background: rgba(22, 163, 74, 0.06); }
 .world-grid-cell.loc-奇珍异地,
+.world-grid-cell.loc-秘境,
 .world-grid-cell.loc-treasure_land   { border-color: rgba(147, 51, 234, 0.45); background: rgba(147, 51, 234, 0.06); }
 .world-grid-cell.loc-凶险之地,
+.world-grid-cell.loc-险地,
 .world-grid-cell.loc-dangerous_area  { border-color: rgba(220, 38, 38, 0.45); background: rgba(220, 38, 38, 0.06); }
+.world-grid-cell.loc-商会            { border-color: rgba(234, 88, 12, 0.45); background: rgba(234, 88, 12, 0.06); }
 
 /* 玩家格子 */
 .world-grid-cell.is-player {
@@ -3438,39 +3611,49 @@ canvas:active {
   border-color: rgba(100, 200, 255, 0.6);
 }
 
-/* 大陆名称 */
-.wcell-continent {
-  font-size: clamp(7px, 0.9vw, 11px);
-  color: rgba(147, 197, 253, 0.7);
-  text-align: center;
-  word-break: break-all;
-  line-height: 1.2;
-  pointer-events: none;
-}
-
 /* 地点图标+名称 */
 .wcell-loc-icon {
-  font-size: clamp(10px, 1.8vw, 18px);
+  font-size: clamp(10px, 1.4vw, 16px);
   line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+/* 山门图标统一颜色 */
+.sect-gate-icon {
+  color: #1565C0;
 }
 .wcell-loc-name {
-  font-size: clamp(6px, 0.8vw, 9px);
-  color: rgba(255, 255, 255, 0.75);
+  font-size: clamp(6px, 0.7vw, 9px);
+  color: rgba(255, 255, 255, 0.8);
   text-align: center;
   word-break: break-all;
-  line-height: 1.2;
+  line-height: 1.1;
   max-width: 100%;
   overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* 势力名称 */
-.wcell-faction {
+/* 势力图标+名称 */
+.wcell-fac-icon {
+  font-size: clamp(10px, 1.4vw, 16px);
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.wcell-fac-name {
   font-size: clamp(6px, 0.7vw, 9px);
-  color: rgba(253, 224, 71, 0.55);
+  color: rgba(253, 224, 71, 0.65);
   text-align: center;
   word-break: break-all;
-  line-height: 1.2;
-  pointer-events: none;
+  line-height: 1.1;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* 玩家标记 */
@@ -3480,8 +3663,8 @@ canvas:active {
   right: 1px;
   background: rgba(100, 200, 255, 0.9);
   border-radius: 50%;
-  width: clamp(10px, 1.5vw, 16px);
-  height: clamp(10px, 1.5vw, 16px);
+  width: clamp(8px, 1vw, 13px);
+  height: clamp(8px, 1vw, 13px);
   display: flex;
   align-items: center;
   justify-content: center;

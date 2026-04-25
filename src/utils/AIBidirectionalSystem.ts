@@ -1755,7 +1755,7 @@ ${userPrompt}
             .trim()
         }
 
-        type InitialSplitUsageType = 'main' | 'instruction_generation'
+        type InitialSplitUsageType = 'main' | 'instruction_generation' | 'world_generation'
         const generateOnce = async (args: {
           step: 1 | 2
           system: string
@@ -1804,7 +1804,7 @@ ${userPrompt}
           system: await buildInitialSplitSystemPrompt(1),
           user: userPrompt,
           should_stream: useStreaming,
-          usageType: 'main',
+          usageType: 'world_generation',
           onStreamChunk: options?.onStreamChunk,
         })
 
@@ -1903,7 +1903,7 @@ ${step1Text}
               ],
               should_stream: useStreaming,
               generation_id: `initial_message_raw_${Date.now()}`,
-              usageType: 'main',
+              usageType: 'world_generation',
             }),
           )
         } else {
@@ -1927,7 +1927,7 @@ ${step1Text}
             user_input: userPrompt,
             should_stream: useStreaming,
             generation_id: `initial_message_${Date.now()}`,
-            usageType: 'main',
+            usageType: 'world_generation',
             injects,
           })
         }
@@ -1944,7 +1944,7 @@ ${step1Text}
             ],
             should_stream: useStreaming,
             generation_id: `initial_message_raw_${Date.now()}`,
-            usageType: 'main',
+            usageType: 'world_generation',
             onStreamChunk: options?.onStreamChunk,
           })
         } else {
@@ -1967,7 +1967,7 @@ ${step1Text}
             user_input: userPrompt,
             should_stream: useStreaming,
             generation_id: `initial_message_${Date.now()}`,
-            usageType: 'main',
+            usageType: 'world_generation',
             injects: injects as any,
             onStreamChunk: options?.onStreamChunk,
           })
