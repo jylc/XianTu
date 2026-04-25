@@ -242,8 +242,8 @@ const isOnlineMode = computed(() => {
   return characterStore.activeCharacterProfile?.模式 === '联机';
 });
 
-// 检测是否开启分步生成
-const isSplitGeneration = computed(() => {
+// 检测是否开启分步生成（使用 ref + storage 事件监听，跨面板同步）
+const readSplitGeneration = (): boolean => {
   const settings = localStorage.getItem('dad_game_settings');
   if (settings) {
     try {
@@ -254,6 +254,13 @@ const isSplitGeneration = computed(() => {
     }
   }
   return false;
+};
+const isSplitGeneration = ref(readSplitGeneration());
+
+window.addEventListener('storage', (e) => {
+  if (e.key === 'dad_game_settings') {
+    isSplitGeneration.value = readSplitGeneration();
+  }
 });
 
 // 检测是否开启事件系统

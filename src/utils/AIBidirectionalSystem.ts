@@ -769,7 +769,6 @@ class AIBidirectionalSystemClass {
 
         const result: Record<string, unknown> = {
           世界: stateForAI.世界,
-          元数据: { 时间: stateForAI.元数据?.时间 },
           角色: migratedCharacter,
           社交: {
             关系: cleanedSocial || stateForAI.社交?.关系,
@@ -781,6 +780,7 @@ class AIBidirectionalSystemClass {
               长期记忆: stateForAI.社交?.记忆?.长期记忆,
             },
           },
+          元数据: { 时间: stateForAI.元数据?.时间 },
         }
 
         // 如果有人物属性数据，则添加到顶级结构中
@@ -792,7 +792,25 @@ class AIBidirectionalSystemClass {
       }
 
       //const stateJsonString = JSON.stringify(buildNarrativeState());
-      const stateToonString = encode(buildConciseNarrativeState()).replace(/"/g, '')
+      const conciseState = buildConciseNarrativeState()
+      console.log(
+        '[AI双向系统] buildConciseNarrativeState 返回类型:',
+        typeof conciseState,
+        'keys:',
+        Object.keys(conciseState || {}),
+      )
+      try {
+        const encoded = encode(conciseState)
+        console.log(
+          '[AI双向系统] encode 结果长度:',
+          encoded.length,
+          '前100字符:',
+          encoded.substring(0, 100),
+        )
+      } catch (e) {
+        console.error('[AI双向系统] encode 失败:', e)
+      }
+      const stateToonString = encode(conciseState).replace(/"/g, '')
       const activePrompts: string[] = []
       if (actionOptionsEnabled) {
         activePrompts.push('actionOptions')
@@ -1075,8 +1093,23 @@ ${stateToonString}`.trim()
       if (shouldActuallySplit) {
         // 🔥 分步生成第1步直接复用 buildNarrativeState（已在上方定义）
         //const buildNarrativeStateForStep1 = (): string => JSON.stringify(buildNarrativeState());
-        const buildConciseNarrativeStateForStep1 = (): string =>
-          encode(buildConciseNarrativeState()).replace(/"/g, '')
+        const buildConciseNarrativeStateForStep1 = (): string => {
+          const state = buildConciseNarrativeState()
+          console.log('[分步第1步] buildConciseNarrativeState keys:', Object.keys(state || {}))
+          let encoded = ''
+          try {
+            encoded = encode(state)
+            console.log(
+              '[分步第1步] encode 长度:',
+              encoded.length,
+              '前100字符:',
+              encoded.substring(0, 100),
+            )
+          } catch (e) {
+            console.error('[分步第1步] encode 失败:', e)
+          }
+          return encoded.replace(/"/g, '')
+        }
 
         const buildSplitSystemPrompt = async (step: 1 | 2): Promise<string> => {
           const tavernEnv = !!tavernHelper
@@ -1097,9 +1130,9 @@ ${stateToonString}`.trim()
           if (step === 1) {
             // 第1步：只输出正文纯文本，不需要JSON格式和指令相关的提示词
             const stepRules = (await getPrompt('splitGenerationStep1')).trim()
-            const worldStandardsPrompt = await getPrompt('worldStandards')
+            const worldStandardsPrompt = await promptStorage.getContentForce('worldStandards')
             // 🔥 添加判定规则，确保战斗等场景使用判定系统
-            const textFormatsPrompt = await getPrompt('textFormatRules')
+            const textFormatsPrompt = await promptStorage.getContentForce('textFormatRules')
             // 🔥 添加精简版存档数据，用于叙事判定（知道玩家装备、状态、NPC关系等）
             //const narrativeStateJson = buildNarrativeStateForStep1();
             const narrativeStateToon = buildConciseNarrativeStateForStep1()
@@ -1119,15 +1152,15 @@ ${worldStandardsPrompt}
 
 ---
 ${customSections ? '\n# 自定义规则\n' + customSections + '\n\n---\n' : ''}
-${coreStatusSummary}
-${vectorMemorySection ? `\n${vectorMemorySection}\n` : ''}
 # 当前游戏状态（用于叙事判定，无需输出指令）
 ${narrativeStateToon}
+${coreStatusSummary}
+${vectorMemorySection ? `\n${vectorMemorySection}\n` : ''}
 `.trim()
           }
 
           // 第2步：COT + 指令生成（合并），需要结构与业务规则
-          // 注意：不要注入 coreOutputRules（它会要求输出 text，和第2步“禁止text”冲突）
+          // 注意：不要注入 coreOutputRules（它会要求输出 text，和第2步”禁止text”冲突）
           const [
             businessRulesPrompt,
             dataDefinitionsPrompt,
@@ -1136,8 +1169,8 @@ ${narrativeStateToon}
           ] = await Promise.all([
             getPrompt('businessRules'),
             getPrompt('dataDefinitions'),
-            getPrompt('textFormatRules'),
-            getPrompt('worldStandards'),
+            promptStorage.getContentForce('textFormatRules'),
+            promptStorage.getContentForce('worldStandards'),
           ])
 
           const sanitizedDataDefinitionsPrompt = tavernEnv
@@ -1653,10 +1686,11 @@ ${step1Text}
 
       if (shouldActuallySplit) {
         const buildInitialSplitSystemPrompt = async (step: 1 | 2): Promise<string> => {
+          const { promptStorage: initPromptStorage } = await import('@/services/promptStorage')
           if (step === 1) {
             // 第1步：只输出正文，不需要JSON格式和指令相关的提示词
             const stepRules = (await getPrompt('splitInitStep1')).trim()
-            const worldStandardsPrompt = await getPrompt('worldStandards')
+            const worldStandardsPrompt = await initPromptStorage.getContentForce('worldStandards')
             return `
 ${stepRules}
 
@@ -1683,8 +1717,8 @@ ${userPrompt}
           ] = await Promise.all([
             getPrompt('businessRules'),
             getPrompt('dataDefinitions'),
-            getPrompt('textFormatRules'),
-            getPrompt('worldStandards'),
+            initPromptStorage.getContentForce('textFormatRules'),
+            initPromptStorage.getContentForce('worldStandards'),
           ])
           const sanitizedDataDefinitionsPrompt = tavernEnv
             ? dataDefinitionsPrompt
@@ -3245,6 +3279,46 @@ ${saveDataJson}`
         if (typeof normalized === 'string' && normalized !== (cmd as any).key) {
           console.warn(`[AI双向系统] 预处理: key 纠正 "${(cmd as any).key}" -> "${normalized}"`)
           ;(cmd as any).key = normalized
+        }
+      }
+
+      // 修复: AI 用英文字段名写物品对象（name→名称, type→类型, quantity→数量, description→描述）
+      const cmdKey = (cmd as any).key as string
+      if (
+        typeof cmdKey === 'string' &&
+        (cmdKey.startsWith('角色.背包.物品.') || inventoryRootKeys.has(cmdKey)) &&
+        cmd.value &&
+        typeof cmd.value === 'object' &&
+        !Array.isArray(cmd.value)
+      ) {
+        const v = cmd.value as Record<string, any>
+        const fieldMap: Record<string, string> = {
+          name: '名称',
+          type: '类型',
+          quantity: '数量',
+          description: '描述',
+          quality: '品质',
+          item_id: '物品ID',
+          itemId: '物品ID',
+        }
+        let patched = false
+        for (const [en, cn] of Object.entries(fieldMap)) {
+          if (v[en] !== undefined && v[cn] === undefined) {
+            v[cn] = v[en]
+            delete v[en]
+            patched = true
+          }
+        }
+        // 补齐缺失的物品ID
+        if (!v.物品ID) {
+          const name = v.名称 || v.name || ''
+          v.物品ID = name
+            ? `item_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+            : `item_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+          patched = true
+        }
+        if (patched) {
+          console.warn(`[AI双向系统] 预处理: 物品字段规范化 "${cmdKey}"`, JSON.stringify(v))
         }
       }
 

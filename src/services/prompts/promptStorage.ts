@@ -42,6 +42,7 @@ export interface PromptItem {
   role: 'system' | 'user' | 'assistant'
   customOrder?: number
   isCustom?: boolean
+  userOverrideSplit?: boolean
 }
 
 export interface PromptsByCategory {
@@ -110,6 +111,7 @@ class PromptStorage {
         role: currentRole,
         customOrder: currentCustomOrder,
         isCustom: false,
+        userOverrideSplit: saved?.userOverrideSplit || false,
       }
     }
 
@@ -131,6 +133,7 @@ class PromptStorage {
           role: saved.role || 'system',
           customOrder: saved.customOrder,
           isCustom: true,
+          userOverrideSplit: saved.userOverrideSplit || false,
         }
       }
     }
@@ -442,6 +445,22 @@ class PromptStorage {
     }
 
     // 默认提示词：优先用户修改，否则用最新默认
+    if (saved?.modified) {
+      return saved.content
+    }
+
+    return defaults[key]?.content || ''
+  }
+
+  /**
+   * 获取提示词内容（忽略 enabled 状态）
+   * 用于分步生成等场景，某些提示词必须读取内容而不受 enabled 开关影响
+   */
+  async getContentForce(key: string): Promise<string> {
+    await this.init()
+    const defaults = getSystemPrompts()
+    const saved = await this.db!.get('prompts', key)
+
     if (saved?.modified) {
       return saved.content
     }

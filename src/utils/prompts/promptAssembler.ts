@@ -27,6 +27,14 @@ export async function assembleSystemPromptSections(
 ): Promise<PromptSection[]> {
   // 动态获取 coreRequest 分类中所有已启用的提示词 key（含自创），按排序
   const allPrompts = await promptStorage.loadAll()
+  const allKeys = Object.keys(allPrompts)
+  const customKeys = allKeys.filter((k) => allPrompts[k].isCustom)
+  console.log(
+    '[提示词组装] 总提示词数:',
+    allKeys.length,
+    '自创提示词:',
+    customKeys.map((k) => `${k}(enabled=${allPrompts[k].enabled}, cat=${allPrompts[k].category})`),
+  )
   const promptKeys = Object.entries(allPrompts)
     .filter(([_, p]) => p.category === 'coreRequest' && p.enabled)
     .sort((a, b) => {
@@ -35,6 +43,7 @@ export async function assembleSystemPromptSections(
       return oA - oB
     })
     .map(([key]) => key)
+  console.log('[提示词组装] 选中的提示词 keys:', promptKeys)
 
   const tavernEnv = isTavernEnv()
 
