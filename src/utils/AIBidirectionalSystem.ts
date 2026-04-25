@@ -1167,8 +1167,8 @@ ${vectorMemorySection ? `\n${vectorMemorySection}\n` : ''}
             textFormatsPrompt,
             worldStandardsPrompt,
           ] = await Promise.all([
-            getPrompt('businessRules'),
-            getPrompt('dataDefinitions'),
+            promptStorage.getContentForce('businessRules'),
+            promptStorage.getContentForce('dataDefinitions'),
             promptStorage.getContentForce('textFormatRules'),
             promptStorage.getContentForce('worldStandards'),
           ])
@@ -1192,7 +1192,7 @@ ${vectorMemorySection ? `\n${vectorMemorySection}\n` : ''}
           )
 
           if (actionOptionsEnabled) {
-            const actionOptionsPrompt = await getPrompt('actionOptions')
+            const actionOptionsPrompt = await promptStorage.getContentForce('actionOptions')
             const customPromptSection = uiStore.actionOptionsPrompt
               ? `**用户自定义要求**：${uiStore.actionOptionsPrompt}\n\n请严格按以上要求生成行动选项。`
               : '（无特殊要求，按默认规则生成）'
@@ -1201,7 +1201,7 @@ ${vectorMemorySection ? `\n${vectorMemorySection}\n` : ''}
             )
           }
 
-          sections.push(await getPrompt('eventSystemRules'))
+          sections.push(await promptStorage.getContentForce('eventSystemRules'))
 
           // 注入自创提示词到第2步
           if (customSections) {
@@ -1299,6 +1299,10 @@ ${stateToonString}
               onStreamChunk: options?.onStreamChunk,
             })
             step1Text = this.extractNarrativeText(String(step1Raw))
+            // 🔥 第1步流式结束：刷新前端流式缓冲区（最后几个字符可能卡在解析缓冲区中）
+            if (options?.onStreamChunk) {
+              options.onStreamChunk('')
+            }
             if (step1Text.trim().length > 0) break
             step1Text = ''
           } catch (e) {
@@ -1715,8 +1719,8 @@ ${userPrompt}
             textFormatsPrompt,
             worldStandardsPrompt,
           ] = await Promise.all([
-            getPrompt('businessRules'),
-            getPrompt('dataDefinitions'),
+            initPromptStorage.getContentForce('businessRules'),
+            initPromptStorage.getContentForce('dataDefinitions'),
             initPromptStorage.getContentForce('textFormatRules'),
             initPromptStorage.getContentForce('worldStandards'),
           ])
@@ -3315,6 +3319,28 @@ ${saveDataJson}`
           v.物品ID = name
             ? `item_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
             : `item_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+          patched = true
+        }
+        // 品质字段格式规范化：字符串 → 对象 { quality, grade }
+        if (typeof v.品质 === 'string') {
+          const gradeVal = typeof v.grade === 'number' ? v.grade : 0
+          v.品质 = { quality: v.品质, grade: gradeVal }
+          delete v.grade
+          patched = true
+        } else if (v.品质 && typeof v.品质 === 'object' && !v.品质.quality) {
+          // 品质是对象但缺少 quality 字段
+          if (typeof v.品质.quality === 'undefined') v.品质.quality = '凡'
+          if (typeof v.品质.grade !== 'number') v.品质.grade = 0
+        } else if (!v.品质) {
+          // 品质缺失，用 grade 字段或默认值
+          const gradeVal = typeof v.grade === 'number' ? v.grade : 0
+          v.品质 = { quality: '凡', grade: gradeVal }
+          delete v.grade
+          patched = true
+        }
+        // 补齐缺失的类型
+        if (!v.类型 && !v.type) {
+          v.类型 = '杂物'
           patched = true
         }
         if (patched) {

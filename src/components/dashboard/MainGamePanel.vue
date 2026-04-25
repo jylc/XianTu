@@ -420,8 +420,8 @@ const thinkingExpanded = computed(() => uiStore.thinkingExpanded);
 // 🔥 保存上一次的思维链内容（传输完成后仍可查看）
 const lastThinkingContent = ref('');
 
-// 🔥 保存流式阶段已显示的正文内容，供最终叙事复用（避免重新加载闪烁）
-const lastStreamedContent = ref('');
+// 🔥 流式阶段已显示的正文内容（从 uiStore 读取，切换页面不丢失）
+const lastStreamedContent = computed(() => uiStore.lastStreamedContent);
 
 // 🔥 流式内容解析状态（用于解析 <thinking> 标签）
 const streamParseState = ref({
@@ -431,9 +431,21 @@ const streamParseState = ref({
 
 // 🔥 处理流式 chunk，解析思维链标签
 const handleStreamChunk = (chunk: string) => {
-  if (!chunk) return;
-
   const state = streamParseState.value;
+
+  // 🔥 空chunk = 流结束信号：刷新缓冲区中剩余内容
+  if (!chunk) {
+    if (state.buffer) {
+      if (state.inThinking) {
+        uiStore.appendThinkingContent(state.buffer);
+      } else {
+        uiStore.appendStreamingContent(state.buffer);
+      }
+      state.buffer = '';
+    }
+    return;
+  }
+
   state.buffer += chunk;
 
   // 处理缓冲区中的内容
@@ -725,10 +737,14 @@ const currentNarrative = computed(() => {
     if (shortTermMemory && shortTermMemory.length > 0) {
       // 短期记忆使用push添加，最新的在末尾
       const latestMemory = shortTermMemory[shortTermMemory.length - 1];
-      content = latestMemory.replace(/^【.*?】\s*/, ''); // 移除时间前缀
+      // 🔥 应用 JSON 清理，防止回退数据源包含 {"text":" 等包装字符
+      content = extractTextFromJsonResponse(latestMemory.replace(/^【.*?】\s*/, ''));
     } else if (narrativeHistory && narrativeHistory.length > 0) {
       // 回退到叙事历史
-      content = narrativeHistory[narrativeHistory.length - 1].content.replace(/^【.*?】\s*/, '');
+      // 🔥 应用 JSON 清理，防止回退数据源包含 {"text":" 等包装字符
+      content = extractTextFromJsonResponse(
+        narrativeHistory[narrativeHistory.length - 1].content.replace(/^【.*?】\s*/, '')
+      );
     }
   }
 
@@ -1320,8 +1336,12 @@ const retryAIResponse = async (
         console.log('[网页版流式-重试] 设置 onStreamChunk 回调');
         resetStreamParseState(); // 重置解析状态
         (options as any).onStreamChunk = (chunk: string) => {
-          if (!useStreaming.value || !chunk) return;
-          console.log('[网页版流式-重试] 收到chunk:', chunk.length, '字符');
+          if (!useStreaming.value && chunk) return;
+          if (!chunk) {
+            // 空 chunk = 流结束刷新信号，必须传递给 handleStreamChunk
+            handleStreamChunk('');
+            return;
+          }
           handleStreamChunk(chunk);
         };
       }
@@ -1519,12 +1539,13 @@ const sendMessage = async () => {
   // 🔥 重置流式内容，准备接收新的流式输出
   uiStore.setStreamingContent('');
   rawStreamingContent.value = ''; // 清除原始流式内容
-  lastStreamedContent.value = ''; // 清除上一轮流式显示的正文
+  uiStore.clearLastStreamedContent(); // 清除上一轮流式显示的正文
   streamingMessageIndex.value = 1; // 设置一个虚拟索引以启用流式处理
 
   // 使用优化的AI请求系统进行双向交互
   let aiResponse: GM_Response | null = null;
   let hasError = false;
+  let finalText = '';  // 提升到外层 try 块，供后续使用
 
   try {
     // 获取当前角色
@@ -1549,8 +1570,12 @@ const sendMessage = async () => {
         console.log('[网页版流式] 设置 onStreamChunk 回调');
         resetStreamParseState(); // 重置解析状态
         (options as any).onStreamChunk = (chunk: string) => {
-          if (!useStreaming.value || !chunk) return;
-          console.log('[网页版流式] 收到chunk:', chunk.length, '字符');
+          if (!useStreaming.value && chunk) return;
+          if (!chunk) {
+            // 空 chunk = 流结束刷新信号，必须传递给 handleStreamChunk
+            handleStreamChunk('');
+            return;
+          }
           handleStreamChunk(chunk);
         };
       }
@@ -1616,7 +1641,7 @@ const sendMessage = async () => {
       // isAIProcessing 会在 finally 块中统一设置为 false
 
       // --- 核心逻辑：整合最终文本并更新状态 ---
-      let finalText = '';
+      // finalText 已在外层 try 块定义
       const gmResp = aiResponse; // aiResponse 本身就是 GM_Response
 
       console.log('[AI响应处理] 开始处理AI响应文本');
@@ -1764,8 +1789,12 @@ const sendMessage = async () => {
 
       // 🔥 先保存流式内容再切换状态，避免 Vue 响应式竞态导致闪烁
       // 必须在 setAIProcessing(false) 之前赋值，否则 Area B computed 会回退到短期记忆文本
-      if (streamingContent.value) {
-        lastStreamedContent.value = streamingContent.value;
+      // 🔥 使用 finalText（解析后的纯文本）而不是 streamingContent（可能包含JSON格式）
+      if (finalText) {
+        uiStore.setLastStreamedContent(finalText);
+      } else if (streamingContent.value) {
+        // 兜底：如果没有 finalText，尝试从 streamingContent 提取
+        uiStore.setLastStreamedContent(extractTextFromJsonResponse(streamingContent.value));
       }
       uiStore.setAIProcessing(false);
       streamingMessageIndex.value = null;
@@ -1960,6 +1989,7 @@ const resetPanelState = () => {
 
   // isAIProcessing 在切换存档时应重置为 false
   uiStore.setAIProcessing(false);
+  uiStore.clearLastStreamedContent(); // 🔥 清除流式缓存的正文内容
   persistAIProcessingState(); // 清除持久化状态
 };
 
@@ -2093,6 +2123,19 @@ onMounted(async () => {
 onActivated(() => {
   console.log('[主面板] 组件激活，恢复AI处理状态');
   restoreAIProcessingState();
+
+  // 🔥 恢复 lastStreamedContent（组件重新挂载时可能丢失）
+  if (!uiStore.lastStreamedContent) {
+    const narrativeHistory = gameStateStore.narrativeHistory;
+    if (narrativeHistory && narrativeHistory.length > 0) {
+      const latest = narrativeHistory[narrativeHistory.length - 1];
+      if (latest.content) {
+        uiStore.setLastStreamedContent(
+          extractTextFromJsonResponse(latest.content.replace(/^【.*?】\s*/, ''))
+        );
+      }
+    }
+  }
 });
 
 // 🔥 组件卸载时清理事件监听器（使用全局标志）

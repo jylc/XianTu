@@ -91,14 +91,143 @@
       </div>
     </Teleport>
 
+    <!-- AI 修正确认弹窗 -->
+    <Teleport to="body">
+      <div v-if="showRegenWorldConfirm" class="realm-regen-overlay" @click.self="showRegenWorldConfirm = false">
+        <div class="realm-regen-dialog">
+          <h3>AI 修正确认</h3>
+          <p>将基于当前世界信息重新调用 AI 生成势力与地点，<br/>现有地图数据将被覆盖，是否继续？</p>
+          <div class="realm-regen-actions">
+            <button class="realm-regen-cancel" @click="showRegenWorldConfirm = false">取消</button>
+            <button class="realm-regen-confirm" @click="doRegenWorldMap">确认修正</button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
     <!-- 世界信息头部 -->
     <div v-if="worldBackground" class="world-info-header">
       <div class="world-name">{{ worldName }}</div>
       <div class="world-background">{{ worldBackground }}</div>
     </div>
 
-    <!-- Pixi.js Canvas容器 -->
-    <div class="map-container" ref="mapContainerRef">
+    <!-- 网格视图（CSS Grid，类似区域地图风格） -->
+    <div
+      v-if="useGridView && hasMapContent"
+      class="world-grid-container"
+      @wheel.prevent="onGridWheel"
+      @mousedown="onGridDragStart"
+      @mousemove="onGridDragMove"
+      @mouseup="onGridDragEnd"
+      @mouseleave="onGridDragEnd"
+      @touchstart="onGridTouchStart"
+      @touchmove="onGridTouchMove"
+      @touchend="onGridTouchEnd"
+    >
+      <div class="world-grid-map" :style="{
+        ...gridTransformStyle,
+        gridTemplateColumns: `repeat(${WORLD_GRID_SIZE}, 1fr)`,
+        gridTemplateRows: `repeat(${WORLD_GRID_SIZE}, 1fr)`,
+      }">
+        <div
+          v-for="cell in worldGridCells"
+          :key="`${cell.gridX}-${cell.gridY}`"
+          class="world-grid-cell"
+          :class="getGridCellClasses(cell)"
+          @click="!gridDragMoved && handleGridCellClick(cell)"
+        >
+          <!-- 大陆名称（仅显示第一个大陆） -->
+          <template v-if="cell.continents.length > 0 && cell.locations.length === 0">
+            <div v-if="cell.gridY % 4 === 0 && cell.gridX % 4 === 0" class="wcell-continent">
+              {{ cell.continents[0] }}
+            </div>
+          </template>
+          <!-- 地点 -->
+          <template v-if="cell.locations.length > 0">
+            <div class="wcell-loc-icon">{{ gridLocationIcons[cell.locations[0]?.类型 || cell.locations[0]?.type] || '📍' }}</div>
+            <div class="wcell-loc-name">{{ cell.locations[0]?.名称 || cell.locations[0]?.name || '' }}</div>
+          </template>
+          <!-- 势力名称（无地点时显示） -->
+          <template v-else-if="cell.factions.length > 0">
+            <div v-if="cell.gridY % 3 === 0 && cell.gridX % 3 === 0" class="wcell-faction">
+              {{ cell.factions[0] }}
+            </div>
+          </template>
+          <!-- 玩家标记 -->
+          <div v-if="cell.isPlayer" class="wcell-player">
+            <svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12">
+              <path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/>
+            </svg>
+          </div>
+        </div>
+      </div>
+      <!-- 地点信息弹窗（复用原有弹窗） -->
+      <div v-if="selectedLocation && !isFactionLocation(selectedLocation)" class="location-popup grid-location-popup">
+        <div class="popup-header">
+          <h4>{{ selectedLocation.name }}</h4>
+          <button @click="closePopup" class="close-btn">×</button>
+        </div>
+        <div class="popup-content">
+          <p class="location-type">{{ getLocationTypeName(selectedLocation.type) }}</p>
+          <p class="location-desc">{{ selectedLocation.description || selectedLocation.描述 }}</p>
+          <div v-if="selectedLocation.danger_level" class="location-detail">
+            <strong>安全等级：</strong>{{ selectedLocation.danger_level }}
+          </div>
+          <div v-if="selectedLocation.suitable_for" class="location-detail">
+            <strong>适合境界：</strong>{{ selectedLocation.suitable_for }}
+          </div>
+          <div v-if="selectedLocation.controlled_by" class="location-detail">
+            <strong>控制势力：</strong>{{ selectedLocation.controlled_by }}
+          </div>
+          <!-- 进入区域地图 -->
+          <button
+            class="enter-region-btn"
+            :class="{ loading: isLoadingRegion }"
+            @click="enterRegionMap(selectedLocation)"
+            :disabled="isLoadingRegion"
+          >
+            <span v-if="!isLoadingRegion">🗺️ 进入区域地图</span>
+            <span v-else>⏳ 生成中...</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- 势力信息弹窗 -->
+      <div v-if="selectedLocation && isFactionLocation(selectedLocation)" class="location-popup faction-popup grid-location-popup">
+        <div class="popup-header">
+          <h4>{{ selectedLocation.name || selectedLocation.名称 }}</h4>
+          <button @click="closePopup" class="close-btn">×</button>
+        </div>
+        <div class="popup-content">
+          <p class="location-type">{{ selectedLocation.类型 || selectedLocation.type || '势力' }}</p>
+          <p class="location-desc">{{ selectedLocation.description || selectedLocation.描述 }}</p>
+          <div v-if="selectedLocation.等级" class="location-detail">
+            <strong>势力等级：</strong>{{ selectedLocation.等级 }}
+          </div>
+          <div v-if="selectedLocation.leadership || selectedLocation.领导层" class="location-detail">
+            <strong>掌门：</strong>{{ (selectedLocation.leadership?.宗主 || selectedLocation.领导层?.宗主) }}
+            <span v-if="selectedLocation.leadership?.宗主修为 || selectedLocation.领导层?.宗主修为">
+              （{{ selectedLocation.leadership?.宗主修为 || selectedLocation.领导层?.宗主修为 }}）
+            </span>
+          </div>
+          <div v-if="selectedLocation.memberCount || selectedLocation.成员数量" class="location-detail">
+            <strong>成员数量：</strong>{{ (selectedLocation.memberCount?.total || selectedLocation.成员数量?.总数 || selectedLocation.成员数量?.total) }}人
+          </div>
+          <div v-if="selectedLocation.特色 && selectedLocation.特色.length > 0" class="location-detail">
+            <strong>势力特色：</strong>{{ Array.isArray(selectedLocation.特色) ? selectedLocation.特色.join('、') : selectedLocation.特色 }}
+          </div>
+          <div v-if="selectedLocation.与玩家关系" class="location-detail">
+            <strong>关系：</strong>
+            <span :class="getRelationClass(selectedLocation.与玩家关系)">
+              {{ selectedLocation.与玩家关系 }}
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Pixi.js Canvas容器（网格视图时隐藏） -->
+    <div v-show="!useGridView" class="map-container" ref="mapContainerRef">
       <canvas ref="canvasRef"></canvas>
 
       <!-- 初始化地图按钮 (仅在地图为空时显示) -->
@@ -147,8 +276,8 @@
       </div>
     </div>
 
-    <!-- 地点信息弹窗 -->
-    <div v-if="selectedLocation && !isFactionLocation(selectedLocation)" class="location-popup" :style="popupStyle">
+    <!-- 地点信息弹窗（仅 Pixi 视图） -->
+    <div v-if="!useGridView && selectedLocation && !isFactionLocation(selectedLocation)" class="location-popup" :style="popupStyle">
       <div class="popup-header">
         <h4>{{ selectedLocation.name }}</h4>
         <button @click="closePopup" class="close-btn">×</button>
@@ -178,8 +307,8 @@
       </div>
     </div>
 
-    <!-- 势力信息弹窗 -->
-    <div v-if="selectedLocation && isFactionLocation(selectedLocation)" class="location-popup faction-popup" :style="popupStyle">
+    <!-- 势力信息弹窗（仅 Pixi 视图） -->
+    <div v-if="!useGridView && selectedLocation && isFactionLocation(selectedLocation)" class="location-popup faction-popup" :style="popupStyle">
       <div class="popup-header">
         <h4>{{ selectedLocation.name || selectedLocation.名称 }}</h4>
         <button @click="closePopup" class="close-btn">×</button>
@@ -217,7 +346,7 @@
     </div>
 
     <!-- 大陆信息弹窗 -->
-    <div v-if="selectedContinent" class="location-popup continent-popup" :style="popupStyle">
+    <div v-if="!useGridView && selectedContinent" class="location-popup continent-popup" :style="popupStyle">
       <div class="popup-header">
         <h4>{{ selectedContinent.name }}</h4>
         <button @click="closePopup" class="close-btn">×</button>
@@ -325,6 +454,24 @@
           <span>追加生成</span>
         </button>
         <button
+          v-if="hasMapContent"
+          @click="showRegenWorldConfirm = true"
+          class="action-btn regen-btn"
+          :disabled="isInitializing"
+        >
+          <RefreshCw :size="14" />
+          <span>AI 修正</span>
+        </button>
+        <button
+          v-if="hasMapContent"
+          @click="useGridView = !useGridView"
+          class="action-btn"
+          :class="{ 'grid-active-btn': useGridView }"
+        >
+          <Grid3x3 :size="14" />
+          <span>{{ useGridView ? '图形视图' : '网格视图' }}</span>
+        </button>
+        <button
           @click="emit('toggle-text-mode')"
           class="action-btn text-mode-btn"
         >
@@ -390,7 +537,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue';
-import { Mountain, Building2, Store, Sparkles, Gem, AlertTriangle, Zap, User, Users, ChevronUp, ChevronDown, Plus, FileText, Menu } from 'lucide-vue-next';
+import { Mountain, Building2, Store, Sparkles, Gem, AlertTriangle, Zap, User, Users, ChevronUp, ChevronDown, Plus, FileText, Menu, RefreshCw, Grid3x3 } from 'lucide-vue-next';
 import { GameMapManager } from '@/utils/gameMapManager';
 import { normalizeLocationsData, normalizeContinentBounds } from '@/utils/coordinateConverter';
 import { useGameStateStore } from '@/stores/gameStateStore';
@@ -1119,6 +1266,312 @@ const getLocationTypeName = (type: string): string => {
   return locationTypeNames[type] || type || '未知类型';
 };
 
+// ─── 网格视图 ─────────────────────────────────────────────────────────────
+const useGridView = ref(true);
+const WORLD_GRID_SIZE = 20;
+const CELL_COORD_SIZE = 500; // 10000 / 20
+
+interface WorldGridCell {
+  gridX: number;
+  gridY: number;
+  continents: string[];
+  locations: any[];
+  factions: string[];
+  isPlayer: boolean;
+}
+
+/** 射线法判断点是否在多边形内 */
+function isPointInPolygon(px: number, py: number, polygon: { x: number; y: number }[]): boolean {
+  if (!polygon || polygon.length < 3) return false;
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const xi = polygon[i].x, yi = polygon[i].y;
+    const xj = polygon[j].x, yj = polygon[j].y;
+    if (((yi > py) !== (yj > py)) && (px < (xj - xi) * (py - yi) / (yj - yi) + xi)) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+/** 地点类型对应图标 */
+const gridLocationIcons: Record<string, string> = {
+  natural_landmark: '⛰️', sect_power: '🏯', city_town: '🏘️',
+  blessed_land: '✨', treasure_land: '💎', dangerous_area: '☠️', special_other: '🌀',
+  '名山大川': '⛰️', '宗门势力': '🏯', '城镇坊市': '🏘️',
+  '洞天福地': '✨', '奇珍异地': '💎', '凶险之地': '☠️', '其他特殊': '🌀',
+};
+
+/** 地点类型对应颜色 */
+const gridLocationColors: Record<string, string> = {
+  natural_landmark: 'cyan', sect_power: 'gold', city_town: 'orange',
+  blessed_land: 'limegreen', treasure_land: 'mediumpurple', dangerous_area: 'tomato', special_other: 'gray',
+  '名山大川': 'cyan', '城镇坊市': 'orange', '洞天福地': 'limegreen',
+  '奇珍异地': 'mediumpurple', '凶险之地': 'tomato', '其他特殊': 'gray',
+};
+
+/** 将世界数据映射到 20×20 网格 */
+const worldGridCells = computed<WorldGridCell[]>(() => {
+  const worldInfo = getCurrentWorldInfo();
+  if (!worldInfo) return [];
+
+  const cells: WorldGridCell[] = [];
+  for (let gy = 0; gy < WORLD_GRID_SIZE; gy++) {
+    for (let gx = 0; gx < WORLD_GRID_SIZE; gx++) {
+      cells.push({ gridX: gx, gridY: gy, continents: [], locations: [], factions: [], isPlayer: false });
+    }
+  }
+
+  const getCell = (gx: number, gy: number) => cells[gy * WORLD_GRID_SIZE + gx];
+
+  // 映射大陆：格子中心点是否在大陆多边形内
+  if (worldInfo.大陆信息) {
+    for (const continent of worldInfo.大陆信息) {
+      const bounds = continent.大洲边界 || continent.continent_bounds;
+      if (!bounds || bounds.length < 3) continue;
+      const name = continent.名称 || continent.name || '';
+      for (let gy = 0; gy < WORLD_GRID_SIZE; gy++) {
+        for (let gx = 0; gx < WORLD_GRID_SIZE; gx++) {
+          const cx = gx * CELL_COORD_SIZE + CELL_COORD_SIZE / 2;
+          const cy = gy * CELL_COORD_SIZE + CELL_COORD_SIZE / 2;
+          if (isPointInPolygon(cx, cy, bounds)) {
+            getCell(gx, gy).continents.push(name);
+          }
+        }
+      }
+    }
+  }
+
+  // 映射地点：坐标映射到格子
+  if (worldInfo.地点信息) {
+    for (const loc of worldInfo.地点信息) {
+      const lx = resolveNumber(loc.coordinates?.x ?? loc.坐标?.x ?? loc.x);
+      const ly = resolveNumber(loc.coordinates?.y ?? loc.坐标?.y ?? loc.y);
+      if (!Number.isFinite(lx) || !Number.isFinite(ly)) continue;
+      const gx = Math.min(WORLD_GRID_SIZE - 1, Math.max(0, Math.floor(lx / CELL_COORD_SIZE)));
+      const gy = Math.min(WORLD_GRID_SIZE - 1, Math.max(0, Math.floor(ly / CELL_COORD_SIZE)));
+      getCell(gx, gy).locations.push(loc);
+    }
+  }
+
+  // 映射势力：势力范围多边形内的格子
+  if (worldInfo.势力信息) {
+    for (const faction of worldInfo.势力信息) {
+      const name = faction.名称 || faction.name || '';
+      const bounds = faction.势力范围 || faction.territoryBounds || faction.territory_bounds;
+      if (!bounds || bounds.length < 3) continue;
+      for (let gy = 0; gy < WORLD_GRID_SIZE; gy++) {
+        for (let gx = 0; gx < WORLD_GRID_SIZE; gx++) {
+          const cx = gx * CELL_COORD_SIZE + CELL_COORD_SIZE / 2;
+          const cy = gy * CELL_COORD_SIZE + CELL_COORD_SIZE / 2;
+          if (isPointInPolygon(cx, cy, bounds)) {
+            getCell(gx, gy).factions.push(name);
+          }
+        }
+      }
+    }
+  }
+
+  // 映射玩家位置
+  const playerPos = gameStateStore.location;
+  const playerCoords = resolvePlayerCoordinates(playerPos);
+  if (playerCoords) {
+    const gx = Math.min(WORLD_GRID_SIZE - 1, Math.max(0, Math.floor(playerCoords.x / CELL_COORD_SIZE)));
+    const gy = Math.min(WORLD_GRID_SIZE - 1, Math.max(0, Math.floor(playerCoords.y / CELL_COORD_SIZE)));
+    getCell(gx, gy).isPlayer = true;
+  }
+
+  return cells;
+});
+
+/** 获取格子 CSS 类 */
+const getGridCellClasses = (cell: WorldGridCell): Record<string, boolean> => {
+  const loc = cell.locations[0];
+  const locType = loc?.类型 || loc?.type || '';
+  return {
+    'has-continent': cell.continents.length > 0,
+    'has-location': cell.locations.length > 0,
+    'has-faction': cell.factions.length > 0 && cell.locations.length === 0,
+    'is-player': cell.isPlayer,
+    [`loc-${locType}`]: !!locType && cell.locations.length > 0,
+  };
+};
+
+/** 网格格子点击 → 复用 selectedLocation 弹窗 */
+const handleGridCellClick = (cell: WorldGridCell) => {
+  // 点击有地点的格子：显示第一个地点的详情弹窗
+  if (cell.locations.length > 0) {
+    const loc = cell.locations[0];
+    // 如果已经选中同一个地点，关闭弹窗
+    const locName = loc.名称 || loc.name;
+    const currentName = selectedLocation.value?.名称 || selectedLocation.value?.name;
+    if (currentName === locName) {
+      closePopup();
+      return;
+    }
+    // 标准化为 WorldLocation 格式
+    selectedLocation.value = normalizeGridLocationToSelected(loc);
+    selectedContinent.value = null;
+    return;
+  }
+  // 点击有势力的格子：找到对应势力数据并显示
+  if (cell.factions.length > 0) {
+    const facName = cell.factions[0];
+    const worldInfo = getCurrentWorldInfo();
+    const facData = worldInfo?.势力信息?.find((f: any) =>
+      (f.名称 || f.name) === facName
+    );
+    if (facData) {
+      const currentName = selectedLocation.value?.名称 || selectedLocation.value?.name;
+      if (currentName === facName) {
+        closePopup();
+        return;
+      }
+      selectedLocation.value = normalizeGridLocationToSelected(facData);
+      selectedContinent.value = null;
+      return;
+    }
+  }
+  // 点击空白格子：关闭弹窗
+  closePopup();
+};
+
+/** 将网格地点/势力数据标准化为 WorldLocation 格式（供弹窗使用） */
+const normalizeGridLocationToSelected = (loc: any): WorldLocation => {
+  return {
+    id: loc.id || loc.名称 || loc.name || '',
+    name: loc.名称 || loc.name || '',
+    type: loc.类型 || loc.type || '',
+    coordinates: loc.坐标 || loc.coordinates || { x: 0, y: 0 },
+    description: loc.描述 || loc.description || '',
+    color: loc.color,
+    iconColor: loc.iconColor,
+    // 保留原始字段供弹窗读取
+    ...loc,
+  } as WorldLocation;
+};
+
+// ─── 网格视图平移/缩放 ──────────────────────────────────────────────────
+const GRID_VIEW_STORAGE_KEY = 'worldGridViewState';
+
+const gridPanX = ref(0);
+const gridPanY = ref(0);
+const gridScale = ref(1);
+const gridIsDragging = ref(false);
+const gridDragStart = ref({ x: 0, y: 0, panX: 0, panY: 0 });
+const gridDragMoved = ref(false); // 区分拖拽和点击
+
+/** 从 localStorage 恢复网格视图状态 */
+const restoreGridViewState = () => {
+  try {
+    const saved = localStorage.getItem(GRID_VIEW_STORAGE_KEY);
+    if (saved) {
+      const s = JSON.parse(saved);
+      if (typeof s.panX === 'number') gridPanX.value = s.panX;
+      if (typeof s.panY === 'number') gridPanY.value = s.panY;
+      if (typeof s.scale === 'number') gridScale.value = Math.max(0.5, Math.min(5, s.scale));
+    }
+  } catch { /* ignore */ }
+};
+
+/** 保存网格视图状态到 localStorage */
+const persistGridViewState = () => {
+  try {
+    localStorage.setItem(GRID_VIEW_STORAGE_KEY, JSON.stringify({
+      panX: gridPanX.value,
+      panY: gridPanY.value,
+      scale: gridScale.value,
+    }));
+  } catch { /* ignore */ }
+};
+
+/** 网格容器 transform 样式 */
+const gridTransformStyle = computed(() => ({
+  transform: `translate(${gridPanX.value}px, ${gridPanY.value}px) scale(${gridScale.value})`,
+  transformOrigin: '0 0',
+  transition: gridIsDragging.value ? 'none' : 'transform 0.15s ease-out',
+}));
+
+/** 鼠标按下：开始拖拽 */
+const onGridDragStart = (e: MouseEvent) => {
+  if (e.button !== 0) return; // 仅左键
+  gridIsDragging.value = true;
+  gridDragMoved.value = false;
+  gridDragStart.value = { x: e.clientX, y: e.clientY, panX: gridPanX.value, panY: gridPanY.value };
+  e.preventDefault();
+};
+
+/** 鼠标移动：拖拽平移 */
+const onGridDragMove = (e: MouseEvent) => {
+  if (!gridIsDragging.value) return;
+  const dx = e.clientX - gridDragStart.value.x;
+  const dy = e.clientY - gridDragStart.value.y;
+  if (Math.abs(dx) > 3 || Math.abs(dy) > 3) gridDragMoved.value = true;
+  gridPanX.value = gridDragStart.value.panX + dx;
+  gridPanY.value = gridDragStart.value.panY + dy;
+};
+
+/** 鼠标松开：结束拖拽 */
+const onGridDragEnd = () => {
+  if (gridIsDragging.value) {
+    gridIsDragging.value = false;
+    persistGridViewState();
+  }
+};
+
+/** 滚轮缩放 */
+const onGridWheel = (e: WheelEvent) => {
+  e.preventDefault();
+  const delta = e.deltaY > 0 ? -0.15 : 0.15;
+  const newScale = Math.max(0.5, Math.min(5, gridScale.value + delta * gridScale.value));
+
+  // 以鼠标位置为缩放中心
+  const container = (e.currentTarget as HTMLElement);
+  const rect = container.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+
+  // 调整 pan 使鼠标指向的地图点保持不动
+  const ratio = newScale / gridScale.value;
+  gridPanX.value = mx - ratio * (mx - gridPanX.value);
+  gridPanY.value = my - ratio * (my - gridPanY.value);
+  gridScale.value = newScale;
+  persistGridViewState();
+};
+
+/** 触摸拖拽开始 */
+const onGridTouchStart = (e: TouchEvent) => {
+  if (e.touches.length === 1) {
+    gridIsDragging.value = true;
+    gridDragMoved.value = false;
+    const t = e.touches[0];
+    gridDragStart.value = { x: t.clientX, y: t.clientY, panX: gridPanX.value, panY: gridPanY.value };
+  }
+};
+
+/** 触摸拖拽移动 */
+const onGridTouchMove = (e: TouchEvent) => {
+  if (!gridIsDragging.value || e.touches.length !== 1) return;
+  const t = e.touches[0];
+  const dx = t.clientX - gridDragStart.value.x;
+  const dy = t.clientY - gridDragStart.value.y;
+  if (Math.abs(dx) > 3 || Math.abs(dy) > 3) gridDragMoved.value = true;
+  gridPanX.value = gridDragStart.value.panX + dx;
+  gridPanY.value = gridDragStart.value.panY + dy;
+  e.preventDefault();
+};
+
+/** 触摸拖拽结束 */
+const onGridTouchEnd = () => {
+  if (gridIsDragging.value) {
+    gridIsDragging.value = false;
+    persistGridViewState();
+  }
+};
+
+// 初始化时恢复状态
+restoreGridViewState();
+
 /**
  * 判断是否为势力地点
  */
@@ -1459,6 +1912,15 @@ const confirmRegenerateRealmMap = () => {
 const doRegenerateRealmMap = async () => {
   showRegenerateConfirm.value = false;
   await generateCurrentRealmMap(true);
+};
+
+/** AI 修正确认弹窗状态 */
+const showRegenWorldConfirm = ref(false);
+
+/** 基于 AI 重新生成世界地图 */
+const doRegenWorldMap = async () => {
+  showRegenWorldConfirm.value = false;
+  await initializeMap();
 };
 
 /**
@@ -2872,6 +3334,177 @@ canvas:active {
 
 .action-btn.text-mode-btn:hover:not(:disabled) {
   box-shadow: 0 4px 12px rgba(139, 92, 246, 0.4);
+}
+
+.action-btn.regen-btn {
+  background: linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%);
+  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.3);
+}
+
+.action-btn.regen-btn:hover:not(:disabled) {
+  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.4);
+}
+
+.action-btn.grid-active-btn {
+  background: linear-gradient(135deg, #10b981 0%, #34d399 100%);
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
+}
+
+/* ─── 网格视图 ─────────────────────────────────────────────────────── */
+.world-grid-container {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+  background: rgba(15, 23, 42, 0.95);
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.world-grid-container:active {
+  cursor: grabbing;
+}
+
+.world-grid-map {
+  display: grid;
+  gap: 2px;
+  width: min(90%, 640px);
+  aspect-ratio: 1;
+  flex-shrink: 0;
+}
+
+.world-grid-cell {
+  position: relative;
+  border-radius: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  background: rgba(255, 255, 255, 0.015);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.world-grid-cell:hover {
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+/* 大陆格子 */
+.world-grid-cell.has-continent {
+  background: rgba(59, 130, 246, 0.06);
+  border-color: rgba(59, 130, 246, 0.15);
+}
+
+/* 势力格子（无地点时） */
+.world-grid-cell.has-faction {
+  background: rgba(245, 158, 11, 0.04);
+  border-color: rgba(245, 158, 11, 0.12);
+}
+
+/* 地点格子 - 根据类型着色 */
+.world-grid-cell.has-location {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+.world-grid-cell.has-location:hover {
+  transform: scale(1.04);
+  z-index: 2;
+}
+
+.world-grid-cell.loc-名山大川,
+.world-grid-cell.loc-natural_landmark { border-color: rgba(8, 145, 178, 0.45); background: rgba(8, 145, 178, 0.06); }
+.world-grid-cell.loc-宗门势力,
+.world-grid-cell.loc-sect_power     { border-color: rgba(202, 138, 4, 0.45); background: rgba(202, 138, 4, 0.06); }
+.world-grid-cell.loc-城镇坊市,
+.world-grid-cell.loc-city_town       { border-color: rgba(234, 88, 12, 0.45); background: rgba(234, 88, 12, 0.06); }
+.world-grid-cell.loc-洞天福地,
+.world-grid-cell.loc-blessed_land    { border-color: rgba(22, 163, 74, 0.45); background: rgba(22, 163, 74, 0.06); }
+.world-grid-cell.loc-奇珍异地,
+.world-grid-cell.loc-treasure_land   { border-color: rgba(147, 51, 234, 0.45); background: rgba(147, 51, 234, 0.06); }
+.world-grid-cell.loc-凶险之地,
+.world-grid-cell.loc-dangerous_area  { border-color: rgba(220, 38, 38, 0.45); background: rgba(220, 38, 38, 0.06); }
+
+/* 玩家格子 */
+.world-grid-cell.is-player {
+  box-shadow: 0 0 8px rgba(100, 200, 255, 0.5);
+  border-color: rgba(100, 200, 255, 0.6);
+}
+
+/* 大陆名称 */
+.wcell-continent {
+  font-size: clamp(7px, 0.9vw, 11px);
+  color: rgba(147, 197, 253, 0.7);
+  text-align: center;
+  word-break: break-all;
+  line-height: 1.2;
+  pointer-events: none;
+}
+
+/* 地点图标+名称 */
+.wcell-loc-icon {
+  font-size: clamp(10px, 1.8vw, 18px);
+  line-height: 1;
+}
+.wcell-loc-name {
+  font-size: clamp(6px, 0.8vw, 9px);
+  color: rgba(255, 255, 255, 0.75);
+  text-align: center;
+  word-break: break-all;
+  line-height: 1.2;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+/* 势力名称 */
+.wcell-faction {
+  font-size: clamp(6px, 0.7vw, 9px);
+  color: rgba(253, 224, 71, 0.55);
+  text-align: center;
+  word-break: break-all;
+  line-height: 1.2;
+  pointer-events: none;
+}
+
+/* 玩家标记 */
+.wcell-player {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  background: rgba(100, 200, 255, 0.9);
+  border-radius: 50%;
+  width: clamp(10px, 1.5vw, 16px);
+  height: clamp(10px, 1.5vw, 16px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.wcell-player svg { width: 60%; height: 60%; fill: #fff; }
+
+.popup-fade-enter-active,
+.popup-fade-leave-active { transition: opacity 0.15s, transform 0.15s; }
+.popup-fade-enter-from,
+.popup-fade-leave-to { opacity: 0; transform: translateX(-50%) translateY(8px); }
+
+/* ─── 网格视图弹窗覆盖（居中显示） ──────────────────────────────────── */
+.grid-location-popup {
+  position: fixed !important;
+  top: 50% !important;
+  left: 50% !important;
+  transform: translate(-50%, -50%) !important;
+  z-index: 3000 !important;
+  max-height: 70vh !important;
+  overflow-y: auto;
+}
+.grid-location-popup .popup-content {
+  pointer-events: auto;
 }
 
 /* 追加生成弹窗 */

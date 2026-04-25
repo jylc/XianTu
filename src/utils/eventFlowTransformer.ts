@@ -1,10 +1,10 @@
-import type { GameEvent, GameTime } from '@/types/game';
+import type { GameEvent, GameTime } from '@/types/game'
 import type {
   EventFlowNode,
   EventFlowEdge,
   EventFlowNodeData,
   EventFlowTransformResult,
-} from '@/types/eventFlow';
+} from '@/types/eventFlow'
 
 /** 事件类型列表，用于 X 轴分列 */
 const EVENT_TYPE_ORDER = [
@@ -16,7 +16,7 @@ const EVENT_TYPE_ORDER = [
   '势力变动',
   '天灾人祸',
   '特殊NPC',
-];
+]
 
 /** 布局配置 */
 const LAYOUT_CONFIG = {
@@ -25,27 +25,28 @@ const LAYOUT_CONFIG = {
   startX: 50,
   startY: 50,
   nodeWidth: 250,
-};
+}
 
 /** 计算游戏时间的总年数（用于排序) */
 function getTotalYears(time: GameTime): number {
-  return time.年 + (time.月 || 1) / 12 + (time.日 || 1) / 365;
+  return time.年 + (time.月 || 1) / 12 + (time.日 || 1) / 365
 }
 
 /** 获取事件类型的列索引 */
 function getTypeColumnIndex(type: string): number {
-  const index = EVENT_TYPE_ORDER.indexOf(type);
-  return index >= 0 ? index : EVENT_TYPE_ORDER.length;
+  const index = EVENT_TYPE_ORDER.indexOf(type)
+  return index >= 0 ? index : EVENT_TYPE_ORDER.length
 }
 
 /** 格式化游戏时间 */
-function formatGameTime(time: GameTime): string {
-  const year = time.年;
-  const month = time.月 || 1;
-  const day = time.日 || 1;
-  const hour = String(time.小时 ?? 0).padStart(2, '0');
-  const minute = String(time.分钟 ?? 0).padStart(2, '0');
-  return `${year}年${month}月${day}日 ${hour}:${minute}`;
+function formatGameTime(time: GameTime | undefined): string {
+  if (!time) return '未知时间'
+  const year = time.年
+  const month = time.月 || 1
+  const day = time.日 || 1
+  const hour = String(time.小时 ?? 0).padStart(2, '0')
+  const minute = String(time.分钟 ?? 0).padStart(2, '0')
+  return `${year}年${month}月${day}日 ${hour}:${minute}`
 }
 
 /** 将 GameEvent 转换为 Vue Flow 节点数据 */
@@ -61,7 +62,7 @@ function eventToNodeData(event: GameEvent): EventFlowNodeData {
     relatedPersons: event.相关人物,
     relatedFactions: event.相关势力,
     scope: event.影响范围,
-  };
+  }
 }
 
 /**
@@ -72,29 +73,29 @@ function eventToNodeData(event: GameEvent): EventFlowNodeData {
  */
 export function transformEventsToFlow(events: GameEvent[]): EventFlowTransformResult {
   if (events.length === 0) {
-    return { nodes: [], edges: [] };
+    return { nodes: [], edges: [] }
   }
 
   // 按时间正序排列(最早在前)
   const sortedEvents = [...events].sort((a, b) => {
-    return getTotalYears(a.发生时间) - getTotalYears(b.发生时间);
-  });
+    return getTotalYears(a.发生时间) - getTotalYears(b.发生时间)
+  })
 
   // 记录每个类型列中已放置的节点数量
-  const columnCounts: Record<string, number> = {};
+  const columnCounts: Record<string, number> = {}
 
   // 创建节点
   const nodes: EventFlowNode[] = sortedEvents.map((event) => {
-    const typeKey = event.事件类型 || '其他';
-    const colIndex = getTypeColumnIndex(typeKey);
-    const rowCount = columnCounts[typeKey] || 0;
-    columnCounts[typeKey] = rowCount + 1;
+    const typeKey = event.事件类型 || '其他'
+    const colIndex = getTypeColumnIndex(typeKey)
+    const rowCount = columnCounts[typeKey] || 0
+    columnCounts[typeKey] = rowCount + 1
 
     // 使用简化的垂直时间线布局
     // X: 按类型分列，Y: 按全局时间顺序
-    const globalIndex = sortedEvents.indexOf(event);
-    const x = LAYOUT_CONFIG.startX + colIndex * LAYOUT_CONFIG.columnWidth;
-    const y = LAYOUT_CONFIG.startY + globalIndex * LAYOUT_CONFIG.rowHeight;
+    const globalIndex = sortedEvents.indexOf(event)
+    const x = LAYOUT_CONFIG.startX + colIndex * LAYOUT_CONFIG.columnWidth
+    const y = LAYOUT_CONFIG.startY + globalIndex * LAYOUT_CONFIG.rowHeight
 
     return {
       id: event.事件ID,
@@ -104,16 +105,16 @@ export function transformEventsToFlow(events: GameEvent[]): EventFlowTransformRe
       style: {
         width: `${LAYOUT_CONFIG.nodeWidth}px`,
       },
-    };
-  });
+    }
+  })
 
   // 创建边
-  const edges: EventFlowEdge[] = [];
+  const edges: EventFlowEdge[] = []
 
   // 1. 时间线边: 连接相邻的全局事件
   for (let i = 1; i < sortedEvents.length; i++) {
-    const prevEvent = sortedEvents[i - 1];
-    const currEvent = sortedEvents[i];
+    const prevEvent = sortedEvents[i - 1]
+    const currEvent = sortedEvents[i]
     edges.push({
       id: `timeline-${prevEvent.事件ID}-${currEvent.事件ID}`,
       source: prevEvent.事件ID,
@@ -126,26 +127,26 @@ export function transformEventsToFlow(events: GameEvent[]): EventFlowTransformRe
         strokeDasharray: '5,5',
       },
       data: { edgeType: 'timeline' },
-    });
+    })
   }
 
   // 2. 关联边: 共享人物或势力的事件
   for (let i = 0; i < sortedEvents.length; i++) {
     for (let j = i + 2; j < sortedEvents.length; j++) {
-      const eventA = sortedEvents[i];
-      const eventB = sortedEvents[j];
+      const eventA = sortedEvents[i]
+      const eventB = sortedEvents[j]
 
       // 检查共享人物
       const sharedPersons =
         eventA.相关人物 &&
         eventB.相关人物 &&
-        eventA.相关人物.some((p) => eventB.相关人物!.includes(p));
+        eventA.相关人物.some((p) => eventB.相关人物!.includes(p))
 
       // 检查共享势力
       const sharedFactions =
         eventA.相关势力 &&
         eventB.相关势力 &&
-        eventA.相关势力.some((f) => eventB.相关势力!.includes(f));
+        eventA.相关势力.some((f) => eventB.相关势力!.includes(f))
 
       if (sharedPersons || sharedFactions) {
         edges.push({
@@ -162,17 +163,17 @@ export function transformEventsToFlow(events: GameEvent[]): EventFlowTransformRe
           data: {
             edgeType: sharedPersons ? 'shared_person' : 'shared_faction',
           },
-        });
+        })
       }
     }
   }
 
-  return { nodes, edges };
+  return { nodes, edges }
 }
 
 /** 获取适合视图的初始视口 */
 export function getFitViewPadding(nodeCount: number): number {
-  if (nodeCount <= 3) return 0.3;
-  if (nodeCount <= 10) return 0.2;
-  return 0.1;
+  if (nodeCount <= 3) return 0.3
+  if (nodeCount <= 10) return 0.2
+  return 0.1
 }

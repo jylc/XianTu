@@ -270,11 +270,12 @@ class PromptStorage {
       weight,
       role: currentRole,
       customOrder: currentCustomOrder,
-      // 保留自创提示词标记
+      // 保留自创提示词标记和用户手动覆盖标记
       isCustom: saved?.isCustom,
       customName: saved?.customName,
       customDescription: saved?.customDescription,
       customCategory: saved?.customCategory,
+      userOverrideSplit: saved?.userOverrideSplit || false,
       updatedAt: new Date().toISOString(),
     })
   }
@@ -323,6 +324,7 @@ class PromptStorage {
       customName: saved?.customName,
       customDescription: saved?.customDescription,
       customCategory: saved?.customCategory,
+      userOverrideSplit: saved?.userOverrideSplit || false,
       updatedAt: new Date().toISOString(),
     })
   }
@@ -349,6 +351,7 @@ class PromptStorage {
         customName: saved?.customName,
         customDescription: saved?.customDescription,
         customCategory: saved?.customCategory,
+        userOverrideSplit: saved?.userOverrideSplit || false,
         updatedAt: new Date().toISOString(),
       })
     }

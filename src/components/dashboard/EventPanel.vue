@@ -557,7 +557,8 @@ const deleteEventById = async (eventId: string) => {
   }
 };
 
-function formatGameTime(time: GameTime): string {
+function formatGameTime(time: GameTime | undefined): string {
+  if (!time) return '未知时间';
   const hh = String(time.小时 ?? 0).padStart(2, '0');
   const mm = String(time.分钟 ?? 0).padStart(2, '0');
   return `${time.年}年${time.月}月${time.日}日 ${hh}:${mm}`;
