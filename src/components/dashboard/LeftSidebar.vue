@@ -163,6 +163,17 @@
       <div class="system-section">
         <div class="section-title">{{ t('系统功能') }}</div>
         <div class="function-group">
+          <button class="function-btn system" @click="handleGameSnapshots" :disabled="!activeCharacter">
+            <div class="btn-icon">
+              <Camera :size="18" />
+            </div>
+            <div class="btn-content">
+              <span class="btn-text">{{ t('游戏快照') }}</span>
+              <span class="btn-desc">{{ t('查看历史快照') }}</span>
+            </div>
+            <ChevronRight :size="14" class="btn-arrow" />
+          </button>
+
           <button class="function-btn system" @click="handleSaveGame" :disabled="!activeCharacter">
             <div class="btn-icon">
               <Save :size="18" />
@@ -283,7 +294,7 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
-import { Package, User, Users, BookOpen, Zap, Brain, Map, Globe, Save, Settings, LogOut, Compass, Home, Bell, ChevronRight, Database, Clock, FileText, Plug, LayoutGrid, Heart, Shield, Hammer } from 'lucide-vue-next';
+import { Package, User, Users, BookOpen, Zap, Brain, Map, Globe, Save, Settings, LogOut, Compass, Home, Bell, ChevronRight, Database, Clock, FileText, Plug, LayoutGrid, Heart, Shield, Hammer, Camera } from 'lucide-vue-next';
 import { useCharacterStore } from '@/stores/characterStore';
 import { toast } from '@/utils/toast';
 import { useUIStore } from '@/stores/uiStore';
@@ -346,6 +357,16 @@ const isAdmin = computed(() => localStorage.getItem('is_admin') === 'true');
 
 const handleSaveGame = async () => {
   router.push('/game/save');
+};
+
+const handleGameSnapshots = () => {
+  import('@/components/dashboard/SnapshotListModal.vue').then((mod) => {
+    uiStore.showDetailModal({
+      title: '游戏快照',
+      component: mod.default,
+      className: 'modal-wide',
+    });
+  });
 };
 
 const handleInventory = () => {

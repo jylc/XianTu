@@ -792,11 +792,28 @@ const handleSelect = async (charId: string, slotKey: string, hasData: boolean) =
   if (hasData) {
     // 对于有数据的存档，检查是否为"上次对话"
     if (slotKey === '上次对话') {
+      // 计算默认存档名，自动递增编号
+      const baseName = '上次对话副本';
+      const existingSavesForDefault = characterStore.rootState.角色列表[charId]?.存档列表 || {};
+      let maxNum = 0;
+      for (const key of Object.keys(existingSavesForDefault)) {
+        if (key === baseName) {
+          maxNum = Math.max(maxNum, 1);
+        } else if (key.startsWith(baseName)) {
+          const suffix = key.slice(baseName.length);
+          const num = parseInt(suffix, 10);
+          if (!isNaN(num) && num > maxNum) {
+            maxNum = num;
+          }
+        }
+      }
+      const defaultName = maxNum > 0 ? `${baseName}${maxNum + 1}` : `${baseName}1`;
+
       // 弹出输入框，让用户输入新存档名
       showPrompt(
         '复制上次对话',
         '请输入新存档的名称：',
-        '上次对话副本',
+        defaultName,
         '存档名称',
         async (newSaveName) => {
           if (!newSaveName || !newSaveName.trim()) {

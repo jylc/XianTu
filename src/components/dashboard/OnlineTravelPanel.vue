@@ -716,6 +716,12 @@ const restoreWorldBackup = async (options: { persist?: boolean } = {}) => {
       // 恢复完整存档到gameStateStore
       await gameStateStore.loadFromSaveData(fullBackup.saveData);
 
+      // 清理 UI 状态，防止残留的流式内容与恢复的存档不匹配
+      const uiStore = useUIStore();
+      uiStore.resetStreamingState();
+      uiStore.clearLastStreamedContent();
+      uiStore.lastSentUserIntentText = '';
+
       // 清理备份
       await clearFullBackup();
       // 同时清理localStorage中的部分备份

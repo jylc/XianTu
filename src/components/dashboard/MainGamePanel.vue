@@ -1899,6 +1899,22 @@ const sendMessage = async () => {
         console.error('[AI响应处理] 最终统一存档失败:', storageError);
         toast.error('游戏存档失败，请尝试手动保存');
       }
+
+      // 持久化快照：AI 完成一轮后保存到 IndexedDB
+      try {
+        const activeSave = characterStore.rootState.当前激活存档;
+        if (activeSave && gameStateStore.conversationAutoSaveEnabled) {
+          const { saveSnapshotToDB } = await import('@/utils/snapshotManager');
+          await saveSnapshotToDB(
+            activeSave.角色ID,
+            activeSave.存档槽位,
+            gameStateStore.toSaveData(),
+            userMessage,
+          );
+        }
+      } catch (snapshotError) {
+        console.warn('[AI响应处理] 持久化快照保存失败（非致命）:', snapshotError);
+      }
     }
   }
 };

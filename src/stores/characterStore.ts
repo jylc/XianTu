@@ -1143,6 +1143,12 @@ export const useCharacterStore = defineStore('characterV3', () => {
       }
 
       debug.log('角色商店', '加载完成')
+
+      // 清理 UI 状态，防止残留的流式内容/行动选项与加载的存档不匹配
+      uiStore.resetStreamingState()
+      uiStore.clearLastStreamedContent()
+      uiStore.lastSentUserIntentText = ''
+
       toast.success(
         `已成功加载【${profile.角色?.名字 || '未知角色'}】的存档: ${targetSlot.存档名 || slotKey}`,
       )
@@ -2419,6 +2425,7 @@ export const useCharacterStore = defineStore('characterV3', () => {
     // 🔥 强制触发UI更新
     const uiStore = useUIStore()
     uiStore.resetStreamingState()
+    uiStore.clearLastStreamedContent()
     uiStore.lastSentUserIntentText = ''
 
     debug.log('角色商店', '✅ 已成功回滚到上次对话前的状态')
