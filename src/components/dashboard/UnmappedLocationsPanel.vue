@@ -31,6 +31,23 @@
               <div v-if="npc.buildingHint" class="npc-building-hint">
                 🏠 区域内位置：<span>{{ npc.buildingHint }}</span>
               </div>
+              <div v-if="getMissingFaction(npc.npcName)" class="npc-missing-faction">
+                ⚔️ 所属势力「<span class="missing-faction-name">{{ getMissingFaction(npc.npcName) }}</span>」未收录
+                <button
+                  v-if="getFactionState(npc.npcName) === 'idle'"
+                  class="btn-create-faction"
+                  @click="handleCreateFaction(npc)"
+                >创建势力</button>
+                <div v-else-if="getFactionState(npc.npcName) === 'loading'" class="btn-loading-inline">
+                  <span class="spinner">⟳</span> 生成中...
+                </div>
+                <div v-else-if="getFactionState(npc.npcName) === 'success'" class="btn-success-inline">
+                  ✅ 已创建
+                </div>
+                <div v-else-if="getFactionState(npc.npcName) === 'error'" class="btn-error-inline">
+                  ❌ 失败 <button class="btn-retry" @click="handleCreateFaction(npc)">重试</button>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -75,6 +92,7 @@
 import { ref, computed } from 'vue';
 import { useGameStateStore } from '@/stores/gameStateStore';
 import { generateLocationPlacement } from '@/utils/worldGeneration/locationPlacementGenerator';
+import { EnhancedWorldGenerator } from '@/utils/worldGeneration/enhancedWorldGenerator';
 
 // ─── Props / Emits ───────────────────────────────────────────────────────────
 
@@ -115,6 +133,37 @@ const ignoredNpcs = ref<Set<string>>(new Set());
 // 每个 NPC 的操作状态
 const npcStates = ref<Map<string, 'idle' | 'loading' | 'success' | 'error'>>(new Map());
 const npcErrors = ref<Map<string, string>>(new Map());
+
+// 势力创建状态（按 NPC 名字追踪）
+const factionStates = ref<Map<string, 'idle' | 'loading' | 'success' | 'error'>>(new Map());
+const factionErrors = ref<Map<string, string>>(new Map());
+
+// 获取 NPC 的势力归属
+const getNpcFaction = (npcName: string): string => {
+  const npc = props.npcs.find(n => n.npcName === npcName);
+  if (!npc?.npcData) return '';
+  const d = npc.npcData as any;
+  return String(d?.势力归属 ?? d?.所属势力 ?? d?.faction ?? '').trim();
+};
+
+// 检查势力是否已存在于世界信息中
+const isFactionExisting = (factionName: string): boolean => {
+  if (!factionName) return true;
+  const worldInfo = gameStateStore.worldInfo as any;
+  const factions: any[] = worldInfo?.势力信息 ?? [];
+  return factions.some(f => String(f?.名称 ?? f?.name ?? '').trim() === factionName);
+};
+
+// 获取缺失的势力名（如果存在的话）
+const getMissingFaction = (npcName: string): string => {
+  const faction = getNpcFaction(npcName);
+  if (!faction) return '';
+  return isFactionExisting(faction) ? '' : faction;
+};
+
+function getFactionState(name: string): 'idle' | 'loading' | 'success' | 'error' {
+  return factionStates.value.get(name) ?? 'idle';
+}
 
 // ─── Computed ─────────────────────────────────────────────────────────────────
 
@@ -275,6 +324,94 @@ async function handleAdd(npc: UnmappedNpc) {
     npcErrors.value.set(npc.npcName, result.error ?? '定位失败');
   }
 }
+
+async function handleCreateFaction(npc: UnmappedNpc) {
+  const factionName = getMissingFaction(npc.npcName);
+  if (!factionName) return;
+
+  factionStates.value.set(npc.npcName, 'loading');
+  factionErrors.value.delete(npc.npcName);
+
+  try {
+    const worldInfo = gameStateStore.worldInfo as any;
+    if (!worldInfo) {
+      factionStates.value.set(npc.npcName, 'error');
+      factionErrors.value.set(npc.npcName, '未找到世界信息');
+      return;
+    }
+
+    const mapCfg = worldInfo?.['地图配置'] ?? {};
+    const mapConfig = {
+      width: Number(mapCfg?.width) || 10000,
+      height: Number(mapCfg?.height) || 10000,
+    };
+
+    const continentHint = npc.continentName
+      ? `\n- 势力必须生成在"${npc.continentName}"大洲范围内，所属大洲字段填写为"${npc.continentName}"`
+      : '';
+
+    const customRequirement = `【特殊要求】
+请务必只生成一个势力，且该势力必须满足以下条件：
+- 名称必须为"${factionName}"
+- 必须包含完整的"领导层"字段：宗主（具体中文姓名）、宗主修为、最强修为、综合战力(1-100)、核心弟子数、内门弟子数、外门弟子数
+- 必须包含完整的"成员数量"字段：总数、按境界（至少3个境界）、按职位（外门弟子、内门弟子、核心弟子、执事、长老、掌门等）
+- 必须包含"特色"字段（数组，至少2项专长）
+- 必须包含"位置"（游戏坐标对象）和"势力范围"（至少4个坐标点的数组）${continentHint}`;
+
+    const generator = new EnhancedWorldGenerator({
+      worldName: worldInfo.世界名称,
+      worldBackground: worldInfo.世界背景,
+      worldEra: worldInfo.世界纪元 || '修真盛世',
+      factionCount: 1,
+      locationCount: 0,
+      secretRealmsCount: 0,
+      continentCount: worldInfo.大陆信息?.length || 1,
+      mapConfig,
+      maxRetries: 2,
+      retryDelay: 500,
+      existingFactions: (worldInfo.势力信息 || []).map((f: any) => ({
+        名称: f.名称 || f.name,
+        位置: f.位置 || f.location,
+        势力范围: f.势力范围 || f.territory,
+      })),
+      existingLocations: (worldInfo.地点信息 || []).map((l: any) => ({
+        名称: l.名称 || l.name,
+        coordinates: l.coordinates || l.坐标,
+      })),
+      customRequirement,
+    });
+
+    const result = await generator.generateValidatedWorld();
+
+    if (!result.success || !result.worldInfo) {
+      factionStates.value.set(npc.npcName, 'error');
+      factionErrors.value.set(npc.npcName, result.errors?.join('; ') || '生成失败');
+      return;
+    }
+
+    const newFactions = result.worldInfo.势力信息 || [];
+    if (newFactions.length === 0) {
+      factionStates.value.set(npc.npcName, 'error');
+      factionErrors.value.set(npc.npcName, 'AI 未生成势力');
+      return;
+    }
+
+    const newFaction = { ...newFactions[0] } as any;
+    newFaction.名称 = factionName;
+
+    // 添加到世界信息
+    if (!Array.isArray(worldInfo.势力信息)) {
+      worldInfo.势力信息 = [];
+    }
+    worldInfo.势力信息.push(newFaction);
+
+    factionStates.value.set(npc.npcName, 'success');
+  } catch (e) {
+    console.error('[UnmappedLocationsPanel] handleCreateFaction failed', e);
+    factionStates.value.set(npc.npcName, 'error');
+    factionErrors.value.set(npc.npcName, '创建势力失败');
+  }
+}
 </script>
 
 <style scoped>
@@ -402,6 +539,46 @@ async function handleAdd(npc: UnmappedNpc) {
 }
 .npc-building-hint span {
   color: rgba(150, 200, 255, 0.7);
+}
+
+.npc-missing-faction {
+  font-size: 11px;
+  color: rgba(255, 160, 60, 0.65);
+  margin-top: 3px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.missing-faction-name {
+  color: rgba(255, 180, 80, 0.9);
+  font-weight: 600;
+}
+.btn-create-faction {
+  padding: 2px 8px;
+  background: rgba(234, 179, 8, 0.12);
+  border: 1px solid rgba(234, 179, 8, 0.35);
+  border-radius: 4px;
+  color: rgba(234, 179, 8, 0.9);
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+}
+.btn-create-faction:hover {
+  background: rgba(234, 179, 8, 0.22);
+  border-color: rgba(234, 179, 8, 0.6);
+}
+.btn-loading-inline, .btn-success-inline, .btn-error-inline {
+  font-size: 11px;
+}
+.btn-success-inline {
+  color: rgba(100, 220, 120, 0.9);
+}
+.btn-error-inline {
+  color: rgba(255, 100, 100, 0.8);
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 /* ─── 操作按钮 ──────────────────────────────────────────────────────────────── */

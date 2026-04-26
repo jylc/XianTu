@@ -27,25 +27,6 @@
     <div class="content-area" ref="contentAreaRef" @scroll="handleContentScroll">
       <!-- 左侧：当前叙述 -->
       <div class="current-narrative">
-        <!-- AI生成状态指示器（生成时显示在顶部） -->
-        <div v-if="isAIProcessing" class="ai-processing-indicator">
-          <div class="streaming-meta">
-            <span class="narrative-time">{{ formatCurrentTime() }}</span>
-            <div class="streaming-indicator">
-              <span class="streaming-dot"></span>
-              <span class="streaming-text">{{ streamingContent ? `${streamingCharCount} ${t('字')}` : t('天道感应中...') }}</span>
-            </div>
-            <!-- 重置按钮 - 右侧 -->
-            <button
-              @click="forceResetAIProcessingState"
-              class="reset-state-btn"
-              :title="t('如果长时间无响应，点击此处重置状态')"
-            >
-              <RotateCcw :size="16" />
-            </button>
-          </div>
-        </div>
-
         <!-- 思维链显示区域（可折叠）- 生成中和完成后都显示 -->
         <div v-if="thinkingContent || lastThinkingContent" class="thinking-section">
           <div class="thinking-header" @click="uiStore.toggleThinkingExpanded()">
@@ -63,8 +44,64 @@
           </Transition>
         </div>
 
-        <!-- 流式输出内容（生成时实时显示，优先级最高） -->
-        <div v-if="isAIProcessing && streamingContent" class="streaming-narrative-content">
+        <!-- 流式输出内容（生成时实时显示，完成后也继续显示，避免重新渲染闪烁） -->
+        <div v-if="streamingContent || lastStreamedContent" class="streaming-narrative-content">
+          <!-- 状态栏：生成中显示时间+指示器，完成后显示完整操作栏 -->
+          <div v-if="isAIProcessing" class="ai-processing-indicator">
+            <div class="streaming-meta">
+              <span class="narrative-time">{{ formatCurrentTime() }}</span>
+              <div class="streaming-indicator">
+                <span class="streaming-dot"></span>
+                <span class="streaming-text">{{ streamingContent ? `${streamingCharCount} ${t('字')}` : t('天道感应中...') }}</span>
+              </div>
+              <button
+                @click="forceResetAIProcessingState"
+                class="reset-state-btn"
+                :title="t('如果长时间无响应，点击此处重置状态')"
+              >
+                <RotateCcw :size="16" />
+              </button>
+            </div>
+          </div>
+          <div v-else class="narrative-meta">
+            <span class="narrative-time">{{ currentNarrative?.time || formatCurrentTime() }}</span>
+            <div class="meta-buttons">
+              <button
+                v-if="snapshots.length > 0"
+                @click="rollbackToLastSnapshot"
+                class="header-action-btn snapshot-btn"
+                :title="t('回退到上一条对话')"
+              >
+                <History :size="20" />
+                <span class="snapshot-count">{{ snapshots.length }}</span>
+              </button>
+
+              <button
+                @click="openEventsPanel"
+                class="header-action-btn event-btn"
+                :title="t('世界事件')"
+              >
+                <Bell :size="20" />
+              </button>
+
+              <span
+                v-if="isOnlineTraveling"
+                class="traveling-badge"
+                :title="travelingTooltip"
+              >穿越中</span>
+
+              <button
+                @click="showStateChanges(currentNarrative?.stateChanges)"
+                class="variable-updates-toggle"
+                :class="{ disabled: currentNarrativeStateChanges.length === 0 }"
+                :disabled="currentNarrativeStateChanges.length === 0"
+                :title="currentNarrativeStateChanges.length > 0 ? t('查看本次对话的变更日志') : t('本次对话无变更记录')"
+              >
+                <ScrollText :size="16" />
+                <span class="update-count">{{ currentNarrativeStateChanges.length }}</span>
+              </button>
+            </div>
+          </div>
           <div v-if="uiStore.lastSentUserIntentText" class="last-user-intent">
             <div class="last-user-intent-header">
               <span class="k">你的输入</span>
@@ -74,11 +111,11 @@
             <div class="last-user-intent-text">{{ uiStore.lastSentUserIntentText }}</div>
           </div>
           <div class="streaming-text">
-            <FormattedText :text="streamingContent" />
+            <FormattedText :text="streamingContent || lastStreamedContent" />
           </div>
         </div>
 
-        <!-- 上一次的叙述内容（非生成时显示） -->
+        <!-- 上一次的叙述内容（非生成时且无流式内容时显示） -->
         <div v-else-if="currentNarrative" class="narrative-content">
           <div class="narrative-meta">
             <span class="narrative-time">{{ currentNarrative.time }}</span>
@@ -132,11 +169,17 @@
           <div class="narrative-text">
             <FormattedText :text="currentNarrative.content" />
           </div>
+        </div>
 
-          <!-- 行动选项 -->
-          <div v-if="uiStore.enableActionOptions && currentNarrative.actionOptions?.length" class="action-options">
+        <div v-else class="empty-narrative">
+          {{ t('静待天机变化...') }}
+        </div>
+
+        <!-- 行动选项（独立于正文，单独加载显示） -->
+        <div v-if="!isAIProcessing && uiStore.enableActionOptions && displayActionOptions.length" class="action-options-section">
+          <div class="action-options">
             <button
-              v-for="(option, index) in currentNarrative.actionOptions"
+              v-for="(option, index) in displayActionOptions"
               :key="index"
               @click="selectActionOption(option)"
               class="action-option-btn"
@@ -144,10 +187,6 @@
               {{ option }}
             </button>
           </div>
-        </div>
-
-        <div v-else class="empty-narrative">
-          {{ t('静待天机变化...') }}
         </div>
       </div>
     </div>
@@ -397,6 +436,16 @@ interface StateChangeLog {
 // --- 计算属性：从当前叙述中安全地获取状态变更列表 ---
 const currentNarrativeStateChanges = computed(() => {
   return currentNarrative.value?.stateChanges?.changes || [];
+});
+
+// --- 计算属性：独立获取最新行动选项（与正文分离加载） ---
+const displayActionOptions = computed(() => {
+  const narrativeHistory = gameStateStore.narrativeHistory;
+  if (narrativeHistory && narrativeHistory.length > 0) {
+    const latest = narrativeHistory[narrativeHistory.length - 1];
+    return latest.actionOptions || [];
+  }
+  return [];
 });
 
 
@@ -985,7 +1034,9 @@ const rollbackToSnapshot = async (snapshotId: string) => {
           }
         }
 
+        // 清除所有 UI 状态，确保回退后显示恢复的数据
         uiStore.resetStreamingState();
+        uiStore.clearLastStreamedContent();
         uiStore.lastSentUserIntentText = '';
         toast.success('已回退到快照');
       } catch (error) {
@@ -1787,20 +1838,17 @@ const sendMessage = async () => {
         lastThinkingContent.value = uiStore.thinkingContent;
       }
 
-      // 🔥 先保存流式内容再切换状态，避免 Vue 响应式竞态导致闪烁
-      // 必须在 setAIProcessing(false) 之前赋值，否则 Area B computed 会回退到短期记忆文本
-      // 🔥 使用 finalText（解析后的纯文本）而不是 streamingContent（可能包含JSON格式）
-      if (finalText) {
-        uiStore.setLastStreamedContent(finalText);
-      } else if (streamingContent.value) {
-        // 兜底：如果没有 finalText，尝试从 streamingContent 提取
-        uiStore.setLastStreamedContent(extractTextFromJsonResponse(streamingContent.value));
+      // 🔥 流式完成后，直接保留用户已看到的流式内容作为 lastStreamedContent
+      // 不使用 finalText/gmResp.text，避免用解析后的文本替换用户已看到的内容
+      if (streamingContent.value) {
+        uiStore.setLastStreamedContent(streamingContent.value);
       }
       uiStore.setAIProcessing(false);
       streamingMessageIndex.value = null;
       uiStore.setCurrentGenerationId(null);
-      // 清除流式内容
-      uiStore.resetStreamingState();
+      // 🔥 不再调用 resetStreamingState()，保留 lastStreamedContent 避免重新渲染
+      // 只清除流式处理中的临时状态
+      uiStore.setStreamingContent('');
       rawStreamingContent.value = '';
       streamParseState.value = { inThinking: false, buffer: '' };
       persistAIProcessingState();
@@ -2010,6 +2058,8 @@ onMounted(async () => {
     // 一次性设置
     loadMemorySettings();
     restoreAIProcessingState();
+    // 🔥 首次挂载时清除旧的流式内容，防止其他存档的叙事历史残留
+    uiStore.clearLastStreamedContent();
     await initializeSystemConnections();
     nextTick(adjustTextareaHeight);
 
@@ -3114,14 +3164,15 @@ const syncGameState = async () => {
   background: var(--color-surface); /* 确保叙述内容区域背景一致 */
 }
 
+.action-options-section {
+  padding: 8px 16px 12px;
+  border-top: 1px solid #e5e7eb;
+}
+
 .action-options {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin-top: 16px;
-  padding-top: 16px;
-  border-top: 1px solid #e5e7eb;
-  margin-bottom: 16px;
 }
 
 .action-option-btn {
@@ -3724,6 +3775,10 @@ const syncGameState = async () => {
 
 [data-theme="dark"] .streaming-text {
   color: #e2e8f0;
+}
+
+[data-theme="dark"] .action-options-section {
+  border-top-color: var(--color-border);
 }
 
 

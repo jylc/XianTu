@@ -111,6 +111,51 @@
       <div class="world-background">{{ worldBackground }}</div>
     </div>
 
+    <!-- 初始化地图面板（无地点也无势力时，两种视图共用） -->
+    <div v-if="!hasMapContent && !isInitializing" class="initialize-map-overlay">
+      <div class="initialize-prompt">
+        <div class="prompt-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="map-icon">
+            <path d="M3 6l6-3 6 3 6-3v15l-6 3-6-3-6 3V6z" />
+            <path d="M9 3v15M15 6v15" />
+          </svg>
+        </div>
+        <h3>地图尚未初始化</h3>
+        <p>当前世界还没有生成势力和地点，选择密度后点击按钮开始生成</p>
+        <div class="density-selector">
+          <label class="density-label">地图密度：</label>
+          <div class="density-options">
+            <label
+              v-for="opt in densityOptions"
+              :key="opt.value"
+              class="density-option"
+              :class="{ active: mapDensity === opt.value }"
+            >
+              <input type="radio" :value="opt.value" v-model="mapDensity" />
+              <span class="option-label">{{ opt.label }}</span>
+              <span class="option-desc">{{ opt.desc }}</span>
+            </label>
+          </div>
+        </div>
+        <button @click="initializeMap" class="initialize-btn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon">
+            <circle cx="12" cy="12" r="10" />
+            <path d="M8 12h8M12 8v8" />
+          </svg>
+          初始化地图
+        </button>
+      </div>
+    </div>
+
+    <!-- 初始化进行中 -->
+    <div v-if="isInitializing" class="initialize-map-overlay">
+      <div class="initialize-prompt">
+        <div class="loading-spinner"></div>
+        <h3>正在生成地图内容...</h3>
+        <p class="status-text">{{ mapStatus }}</p>
+      </div>
+    </div>
+
     <!-- 网格视图（CSS Grid，类似区域地图风格） -->
     <div
       v-if="useGridView && hasMapContent"
@@ -241,53 +286,8 @@
     </div>
 
     <!-- Pixi.js Canvas容器（网格视图时隐藏） -->
-    <div v-show="!useGridView" class="map-container" ref="mapContainerRef">
+    <div v-show="!useGridView && hasMapContent" class="map-container" ref="mapContainerRef">
       <canvas ref="canvasRef"></canvas>
-
-      <!-- 初始化地图按钮 (仅在地图为空时显示) -->
-      <div v-if="!hasMapContent && !isInitializing" class="initialize-map-overlay">
-        <div class="initialize-prompt">
-          <div class="prompt-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="map-icon">
-              <path d="M3 6l6-3 6 3 6-3v15l-6 3-6-3-6 3V6z" />
-              <path d="M9 3v15M15 6v15" />
-            </svg>
-          </div>
-          <h3>地图尚未初始化</h3>
-          <p>当前世界还没有生成势力和地点，选择密度后点击按钮开始生成</p>
-          <div class="density-selector">
-            <label class="density-label">地图密度：</label>
-            <div class="density-options">
-              <label
-                v-for="opt in densityOptions"
-                :key="opt.value"
-                class="density-option"
-                :class="{ active: mapDensity === opt.value }"
-              >
-                <input type="radio" :value="opt.value" v-model="mapDensity" />
-                <span class="option-label">{{ opt.label }}</span>
-                <span class="option-desc">{{ opt.desc }}</span>
-              </label>
-            </div>
-          </div>
-          <button @click="initializeMap" class="initialize-btn">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon">
-              <circle cx="12" cy="12" r="10" />
-              <path d="M8 12h8M12 8v8" />
-            </svg>
-            初始化地图
-          </button>
-        </div>
-      </div>
-
-      <!-- 初始化进行中 -->
-      <div v-if="isInitializing" class="initialize-map-overlay">
-        <div class="initialize-prompt">
-          <div class="loading-spinner"></div>
-          <h3>正在生成地图内容...</h3>
-          <p class="status-text">{{ mapStatus }}</p>
-        </div>
-      </div>
     </div>
 
     <!-- 地点信息弹窗（仅 Pixi 视图） -->
@@ -1435,7 +1435,27 @@ const gridLocationColors: Record<string, string> = {
   '其他特殊': 'gray', '商会': 'orange',
 };
 
-/** 将世界数据映射到 20×20 网格 */
+/** 将世界数据映射到 16×16 网格 */
+
+/** 在目标格子周围螺旋搜索一个无地点的空格子 */
+const findNearbyEmptyCell = (
+  startX: number, startY: number, cells: WorldGridCell[], maxRadius = 4
+): WorldGridCell | null => {
+  for (let r = 1; r <= maxRadius; r++) {
+    for (let dx = -r; dx <= r; dx++) {
+      for (let dy = -r; dy <= r; dy++) {
+        if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue; // 只遍历外圈
+        const nx = startX + dx;
+        const ny = startY + dy;
+        if (nx < 0 || nx >= WORLD_GRID_SIZE || ny < 0 || ny >= WORLD_GRID_SIZE) continue;
+        const c = cells[ny * WORLD_GRID_SIZE + nx];
+        if (c.locations.length === 0) return c;
+      }
+    }
+  }
+  return null;
+};
+
 const worldGridCells = computed<WorldGridCell[]>(() => {
   const worldInfo = getCurrentWorldInfo();
   if (!worldInfo) return [];
@@ -1481,35 +1501,38 @@ const worldGridCells = computed<WorldGridCell[]>(() => {
     }
   }
 
-  // 映射势力：势力范围多边形内的格子
-  if (worldInfo.势力信息) {
+  // 映射势力：分为两步 — 1) 势力范围着色 2) 地点标记
+  if (worldInfo.势力信息 && worldInfo.势力信息.length > 0) {
     for (const faction of worldInfo.势力信息) {
-      const name = faction.名称 || faction.name || '';
-      const ftype = faction.类型 || faction.type || '';
-      const bounds = faction.势力范围 || faction.territoryBounds || faction.territory_bounds;
-      if (!bounds || bounds.length < 3) continue;
-      for (let gy = 0; gy < WORLD_GRID_SIZE; gy++) {
-        for (let gx = 0; gx < WORLD_GRID_SIZE; gx++) {
-          const cx = gx * CELL_COORD_SIZE + CELL_COORD_SIZE / 2;
-          const cy = gy * CELL_COORD_SIZE + CELL_COORD_SIZE / 2;
-          if (isPointInPolygon(cx, cy, bounds)) {
-            getCell(gx, gy).factions.push({ name, 类型: ftype });
+      const name = faction.名称 || (faction as any).name || '';
+      const ftype = faction.类型 || (faction as any).type || '';
+      const bounds = faction.势力范围 || (faction as any).territoryBounds || (faction as any).territory_bounds;
+
+      // 步骤1: 势力范围多边形着色
+      if (bounds && bounds.length >= 3) {
+        for (let gy = 0; gy < WORLD_GRID_SIZE; gy++) {
+          for (let gx = 0; gx < WORLD_GRID_SIZE; gx++) {
+            const cx = gx * CELL_COORD_SIZE + CELL_COORD_SIZE / 2;
+            const cy = gy * CELL_COORD_SIZE + CELL_COORD_SIZE / 2;
+            if (isPointInPolygon(cx, cy, bounds)) {
+              getCell(gx, gy).factions.push({ name, 类型: ftype });
+            }
           }
         }
       }
 
-      // 将势力作为地点标记添加到其中心位置
+      // 步骤2: 将势力作为地点标记添加到其位置
       const factionLocX = resolveNumber(
-        (faction.位置 as any)?.x ?? faction.coordinates?.x ?? faction.坐标?.x
+        (faction.位置 as any)?.x ?? (faction as any).coordinates?.x ?? (faction as any).坐标?.x
       );
       const factionLocY = resolveNumber(
-        (faction.位置 as any)?.y ?? faction.coordinates?.y ?? faction.坐标?.y
+        (faction.位置 as any)?.y ?? (faction as any).coordinates?.y ?? (faction as any).坐标?.y
       );
       let locGx: number, locGy: number;
       if (factionLocX !== null && factionLocY !== null) {
         locGx = Math.min(WORLD_GRID_SIZE - 1, Math.max(0, Math.floor(factionLocX / CELL_COORD_SIZE)));
         locGy = Math.min(WORLD_GRID_SIZE - 1, Math.max(0, Math.floor(factionLocY / CELL_COORD_SIZE)));
-      } else {
+      } else if (bounds && bounds.length >= 3) {
         // 无坐标时从势力范围多边形计算中心点
         const validBounds = (bounds as { x: number; y: number }[]).filter(
           (p) => Number.isFinite(p.x) && Number.isFinite(p.y)
@@ -1519,9 +1542,30 @@ const worldGridCells = computed<WorldGridCell[]>(() => {
         const centerY = validBounds.reduce((s, p) => s + p.y, 0) / validBounds.length;
         locGx = Math.min(WORLD_GRID_SIZE - 1, Math.max(0, Math.floor(centerX / CELL_COORD_SIZE)));
         locGy = Math.min(WORLD_GRID_SIZE - 1, Math.max(0, Math.floor(centerY / CELL_COORD_SIZE)));
+      } else {
+        // 既无坐标也无势力范围，随机分配到地图上有大陆的格子，否则随机位置
+        const continentCells = cells.filter(c => c.continents.length > 0);
+        if (continentCells.length > 0) {
+          const randomCell = continentCells[Math.floor(Math.random() * continentCells.length)];
+          locGx = randomCell.gridX;
+          locGy = randomCell.gridY;
+        } else {
+          locGx = Math.floor(Math.random() * WORLD_GRID_SIZE);
+          locGy = Math.floor(Math.random() * WORLD_GRID_SIZE);
+        }
       }
-      const targetCell = getCell(locGx, locGy);
-      // 避免与已有地点重复
+      // 如果目标格子已被地点占据，在附近寻找空格子
+      let targetCell = getCell(locGx, locGy);
+      if (targetCell.locations.length > 0) {
+        const found = findNearbyEmptyCell(locGx, locGy, cells);
+        if (found) {
+          locGx = found.gridX;
+          locGy = found.gridY;
+          targetCell = found;
+        }
+      }
+
+      // 避免与已有同名地点重复
       const alreadyExists = targetCell.locations.some(
         (l: any) => (l.名称 || l.name) === name
       );
@@ -3589,7 +3633,14 @@ canvas:active {
 .world-grid-cell.loc-natural_landmark { border-color: rgba(8, 145, 178, 0.45); background: rgba(8, 145, 178, 0.06); }
 .world-grid-cell.loc-宗门势力,
 .world-grid-cell.loc-宗门,
-.world-grid-cell.loc-sect_power     { border-color: rgba(202, 138, 4, 0.45); background: rgba(202, 138, 4, 0.06); }
+.world-grid-cell.loc-sect_power,
+.world-grid-cell.loc-修仙宗门,
+.world-grid-cell.loc-魔道宗门,
+.world-grid-cell.loc-中立宗门,
+.world-grid-cell.loc-修仙世家,
+.world-grid-cell.loc-魔道势力,
+.world-grid-cell.loc-散修联盟,
+.world-grid-cell.loc-妖族势力     { border-color: rgba(202, 138, 4, 0.45); background: rgba(202, 138, 4, 0.06); }
 .world-grid-cell.loc-城镇坊市,
 .world-grid-cell.loc-城池,
 .world-grid-cell.loc-坊市,

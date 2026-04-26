@@ -16,7 +16,7 @@
             <div class="sect-subtitle">
               <span v-if="activeSectName && isSectLeader" class="sub-strong">可管理宗门事务</span>
               <span v-else-if="activeSectName">宗门事务与发展</span>
-              <span v-else>先在「宗门概览」选择势力，或创建/加入自己的宗门</span>
+              <span v-else>先在「宗门概览」选择并加入一个势力</span>
             </div>
           </div>
         </div>

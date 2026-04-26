@@ -14,6 +14,29 @@
                 class="search-input"
               />
             </div>
+            <button class="create-sect-btn" @click="showCreateForm = true" :disabled="isOnlineMode">
+              <Plus :size="14" />
+              <span>创建宗门</span>
+            </button>
+            <div v-if="showCreateForm" class="create-sect-form">
+              <div class="form-header">
+                <span class="form-title">创建新宗门</span>
+                <button class="form-close" @click="cancelCreate"><X :size="14" /></button>
+              </div>
+              <input
+                v-model="createSectName"
+                placeholder="宗门名称（可选，留空由AI命名）"
+                class="create-name-input"
+                :disabled="isCreating"
+                @keyup.enter="confirmCreateSect"
+              />
+              <div class="form-actions">
+                <button class="form-cancel-btn" @click="cancelCreate" :disabled="isCreating">取消</button>
+                <button class="form-confirm-btn" @click="confirmCreateSect" :disabled="isCreating">
+                  {{ isCreating ? '创建中...' : '确认创建' }}
+                </button>
+              </div>
+            </div>
           </div>
 
           <div class="list-content">
@@ -348,11 +371,12 @@ import type { WorldFaction, SectMemberInfo, WorldInfo } from '@/types/game';
 import {
   Building, Users, Heart, UserPlus, CheckCircle,
   Gift, Search, Loader2,
-  ChevronRight, Map, LogOut, Trash2
+  ChevronRight, Map, LogOut, Trash2, Plus, X
 } from 'lucide-vue-next';
 import { toast } from '@/utils/toast';
 import { validateAndFixSectDataList } from '@/utils/worldGeneration/sectDataValidator';
 import { createJoinedSectState } from '@/utils/sectSystemFactory';
+import { EnhancedWorldGenerator } from '@/utils/worldGeneration/enhancedWorldGenerator';
 
 const characterStore = useCharacterStore();
 const gameStateStore = useGameStateStore();
@@ -362,6 +386,9 @@ const isOnlineMode = computed(() => characterStore.activeCharacterProfile?.模�
 const isLoading = ref(false);
 const selectedSect = ref<WorldFaction | null>(null);
 const searchQuery = ref('');
+const showCreateForm = ref(false);
+const createSectName = ref('');
+const isCreating = ref(false);
 
 const selectedLeadership = computed(() => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -855,6 +882,111 @@ const requestJoinSect = (sect: WorldFaction) => {
   gameStateStore.updateState('sectMemberInfo', memberInfo);
   gameStateStore.updateState('sectSystem', sectSystem);
   toast.success(`已加入 ${sect.名称}`);
+};
+
+const cancelCreate = () => {
+  showCreateForm.value = false;
+  createSectName.value = '';
+  isCreating.value = false;
+};
+
+const confirmCreateSect = async () => {
+  if (isOnlineMode.value) {
+    toast.warning('联机模式下不支持直接创建宗门');
+    return;
+  }
+
+  const saveData = gameStateStore.getCurrentSaveData();
+  if (!saveData) {
+    toast.error('存档数据未加载');
+    return;
+  }
+
+  const worldInfo = (saveData as any)?.世界?.信息 as WorldInfo | undefined;
+  if (!worldInfo) {
+    toast.error('未找到世界信息，请先初始化世界');
+    return;
+  }
+
+  isCreating.value = true;
+
+  try {
+    const sectNameInput = createSectName.value.trim();
+
+    const customRequirement = sectNameInput
+      ? `【特殊要求】\n请务必只生成一个势力，且该势力的名称必须为"${sectNameInput}"，其余信息由AI自主决定。`
+      : '【特殊要求】\n请务必只生成一个势力，所有信息由AI自主决定。';
+
+    const mapConfig = (worldInfo as any)?.['地图配置'] || { width: 10000, height: 10000 };
+
+    const generator = new EnhancedWorldGenerator({
+      worldName: worldInfo.世界名称,
+      worldBackground: worldInfo.世界背景,
+      worldEra: worldInfo.世界纪元 || '修真盛世',
+      factionCount: 1,
+      locationCount: 0,
+      secretRealmsCount: 0,
+      continentCount: worldInfo.大陆信息?.length || 1,
+      mapConfig: mapConfig,
+      maxRetries: 2,
+      retryDelay: 500,
+      existingFactions: worldInfo.势力信息?.map((f: any) => ({
+        名称: f.名称 || f.name,
+        位置: f.位置 || f.location,
+        势力范围: f.势力范围 || f.territory
+      })) || [],
+      existingLocations: worldInfo.地点信息?.map((l: any) => ({
+        名称: l.名称 || l.name,
+        coordinates: l.coordinates || l.坐标
+      })) || [],
+      customRequirement,
+    });
+
+    const result = await generator.generateValidatedWorld();
+
+    if (!result.success || !result.worldInfo) {
+      toast.error(result.errors?.join('; ') || '创建宗门失败');
+      return;
+    }
+
+    const newFactions = result.worldInfo.势力信息 || [];
+    if (newFactions.length === 0) {
+      toast.error('AI 未生成任何势力，请重试');
+      return;
+    }
+
+    const newFaction = { ...newFactions[0] } as any;
+
+    // 如果用户指定了名称，强制覆盖
+    if (sectNameInput) {
+      newFaction.名称 = sectNameInput;
+    }
+
+    // 合并到世界信息
+    const updatedWorldInfo = {
+      ...worldInfo,
+      势力信息: [...(worldInfo.势力信息 || []), newFaction],
+    };
+
+    // 写回存档数据
+    const nextSaveData = JSON.parse(JSON.stringify(saveData)) as any;
+    nextSaveData.世界.信息 = updatedWorldInfo;
+    gameStateStore.loadFromSaveData(nextSaveData);
+
+    await characterStore.saveCurrentGame();
+
+    selectedSect.value = newFaction;
+
+    toast.success(`宗门「${newFaction.名称}」创建成功`);
+
+    showCreateForm.value = false;
+    createSectName.value = '';
+  } catch (e) {
+    console.error('[SectPanel] confirmCreateSect failed', e);
+    toast.error('创建宗门失败，请稍后重试');
+  } finally {
+    isCreating.value = false;
+  }
 };
 
 </script>
@@ -1640,6 +1772,148 @@ const requestJoinSect = (sect: WorldFaction) => {
 
 .sect-actions {
   margin-top: 1rem;
+}
+
+/* 创建宗门按钮 */
+.create-sect-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  margin-top: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 8px;
+  border: 1px dashed rgba(var(--color-primary-rgb), 0.4);
+  background: rgba(var(--color-primary-rgb), 0.06);
+  color: var(--color-primary);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.create-sect-btn:hover {
+  border-color: rgba(var(--color-primary-rgb), 0.7);
+  background: rgba(var(--color-primary-rgb), 0.10);
+}
+
+.create-sect-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* 创建宗门内联表单 */
+.create-sect-form {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-background);
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.form-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.form-title {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.form-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  border: none;
+  background: rgba(var(--color-border-rgb), 0.15);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.form-close:hover {
+  background: rgba(var(--color-border-rgb), 0.3);
+  color: var(--color-text);
+}
+
+.create-name-input {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: 0.85rem;
+  outline: none;
+  transition: border-color 0.15s ease;
+  box-sizing: border-box;
+}
+
+.create-name-input:focus {
+  border-color: rgba(var(--color-primary-rgb), 0.5);
+}
+
+.create-name-input:disabled {
+  opacity: 0.6;
+}
+
+.form-actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+.form-cancel-btn {
+  padding: 0.4rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid var(--color-border);
+  background: var(--color-background);
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.form-cancel-btn:hover {
+  border-color: rgba(var(--color-border-rgb), 0.6);
+  color: var(--color-text);
+}
+
+.form-cancel-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.form-confirm-btn {
+  padding: 0.4rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid rgba(var(--color-primary-rgb), 0.4);
+  background: rgba(var(--color-primary-rgb), 0.10);
+  color: var(--color-primary);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.form-confirm-btn:hover {
+  background: rgba(var(--color-primary-rgb), 0.18);
+  border-color: rgba(var(--color-primary-rgb), 0.6);
+}
+
+.form-confirm-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .actions-title {
