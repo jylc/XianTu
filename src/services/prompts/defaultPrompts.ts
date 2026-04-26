@@ -7,13 +7,18 @@
  * 3. 生成类提示词 - 世界/NPC/任务等生成
  * 4. 角色初始化提示词 - 创建角色时使用
  */
-import { getSaveDataStructureForEnv } from '@/utils/prompts/definitions/dataDefinitions';
-import { getCharacterInitializationPromptForEnv } from '@/utils/prompts/tasks/characterInitializationPrompts';
-import { EnhancedWorldPromptBuilder } from '@/utils/worldGeneration/enhancedWorldPrompts';
-import { promptStorage } from './promptStorage';
-import { isTavernEnv } from '@/utils/tavern';
+import { getSaveDataStructureForEnv } from '@/utils/prompts/definitions/dataDefinitions'
+import { getCharacterInitializationPromptForEnv } from '@/utils/prompts/tasks/characterInitializationPrompts'
+import { EnhancedWorldPromptBuilder } from '@/utils/worldGeneration/enhancedWorldPrompts'
+import { promptStorage } from './promptStorage'
+import { isTavernEnv } from '@/utils/tavern'
 // 核心规则
-import { JSON_OUTPUT_RULES, RESPONSE_FORMAT_RULES, DATA_STRUCTURE_STRICTNESS, NARRATIVE_PURITY_RULES } from '@/utils/prompts/definitions/coreRules';
+import {
+  JSON_OUTPUT_RULES,
+  RESPONSE_FORMAT_RULES,
+  DATA_STRUCTURE_STRICTNESS,
+  NARRATIVE_PURITY_RULES,
+} from '@/utils/prompts/definitions/coreRules'
 // 业务规则
 import {
   REALM_SYSTEM_RULES,
@@ -41,25 +46,39 @@ import {
   SKILL_AND_SPELL_USAGE_RULES,
   ECONOMY_AND_PRICING_RULES,
   CULTIVATION_DETAIL_RULES,
-  STATUS_EFFECT_RULES
-} from '@/utils/prompts/definitions/businessRules';
+  STATUS_EFFECT_RULES,
+} from '@/utils/prompts/definitions/businessRules'
 // 文本格式
-import { TEXT_FORMAT_MARKERS, DICE_ROLLING_RULES, COMBAT_DAMAGE_RULES, NAMING_CONVENTIONS } from '@/utils/prompts/definitions/textFormats';
+import {
+  TEXT_FORMAT_MARKERS,
+  DICE_ROLLING_RULES,
+  COMBAT_DAMAGE_RULES,
+  NAMING_CONVENTIONS,
+} from '@/utils/prompts/definitions/textFormats'
 // 世界标准
-import { REALM_ATTRIBUTE_STANDARDS, QUALITY_SYSTEM, REPUTATION_GUIDE } from '@/utils/prompts/definitions/worldStandards';
-import { ACTION_OPTIONS_RULES } from '@/utils/prompts/definitions/actionOptions';
-import { EVENT_SYSTEM_RULES } from '@/utils/prompts/definitions/eventSystemRules';
-import { PLAYER_PERSONALITY_RULES } from '@/utils/prompts/definitions/playerPersonality';
-import { NPC_RELATION_NETWORK_RULES, NPC_RELATION_COMMANDS, NPC_FACTION_RULES } from '@/utils/prompts/definitions/npcRelationRules';
+import {
+  REALM_ATTRIBUTE_STANDARDS,
+  QUALITY_SYSTEM,
+  REPUTATION_GUIDE,
+} from '@/utils/prompts/definitions/worldStandards'
+import { ACTION_OPTIONS_RULES } from '@/utils/prompts/definitions/actionOptions'
+import { EVENT_SYSTEM_RULES } from '@/utils/prompts/definitions/eventSystemRules'
+import { PLAYER_PERSONALITY_RULES } from '@/utils/prompts/definitions/playerPersonality'
+import {
+  NPC_RELATION_NETWORK_RULES,
+  NPC_RELATION_COMMANDS,
+  NPC_FACTION_RULES,
+} from '@/utils/prompts/definitions/npcRelationRules'
 
 export interface PromptDefinition {
-  name: string;
-  content: string;
-  category: string;
-  description?: string;
-  order?: number;
-  weight?: number; // 权重 1-10，越高越重要
-  condition?: 'onlineMode' | 'splitGeneration' | 'eventSystem' | 'always'; // 显示条件
+  name: string
+  content: string
+  category: string
+  description?: string
+  order?: number
+  weight?: number // 权重 1-10，越高越重要
+  condition?: 'onlineMode' | 'splitGeneration' | 'eventSystem' | 'always' // 显示条件
+  role?: 'system' | 'user' | 'assistant' // 注入角色，默认 system
 }
 
 /**
@@ -69,32 +88,37 @@ export const PROMPT_CATEGORIES = {
   coreRequest: {
     name: '核心请求提示词',
     description: '正常游戏请求时按顺序发送的提示词',
-    icon: '📨'
+    icon: '📨',
   },
   summary: {
     name: '总结请求提示词',
     description: '记忆总结时使用的提示词',
-    icon: '📝'
+    icon: '📝',
   },
   initialization: {
     name: '开局初始化提示词',
     description: '开局时世界生成和角色初始化的提示词',
-    icon: '🚀'
+    icon: '🚀',
   },
   generation: {
     name: '动态生成提示词',
     description: '游戏中动态生成NPC/事件/物品的提示词',
-    icon: '🎨'
+    icon: '🎨',
   },
   online: {
     name: '联机模式提示词',
     description: '联机模式专用的规则和限制提示词',
-    icon: '🌐'
-  }
-};
+    icon: '🌐',
+  },
+}
 
 // 合并核心输出规则
-const CORE_OUTPUT_RULES = [JSON_OUTPUT_RULES, RESPONSE_FORMAT_RULES, DATA_STRUCTURE_STRICTNESS, NARRATIVE_PURITY_RULES].join('\n\n');
+const CORE_OUTPUT_RULES = [
+  JSON_OUTPUT_RULES,
+  RESPONSE_FORMAT_RULES,
+  DATA_STRUCTURE_STRICTNESS,
+  NARRATIVE_PURITY_RULES,
+].join('\n\n')
 
 // 合并业务规则（精简版，核心规则优先）
 const BUSINESS_RULES = [
@@ -109,8 +133,8 @@ const BUSINESS_RULES = [
   TECHNIQUE_SYSTEM_RULES,
   COMBAT_ALCHEMY_RISK_RULES,
   COMBAT_TURN_BASED_RULES,
-  PLAYER_AUTONOMY_RULES
-].join('\n\n');
+  PLAYER_AUTONOMY_RULES,
+].join('\n\n')
 
 // 扩展业务规则（可选，用户可自定义开启）
 const EXTENDED_BUSINESS_RULES = [
@@ -130,17 +154,22 @@ const EXTENDED_BUSINESS_RULES = [
   SKILL_AND_SPELL_USAGE_RULES,
   ECONOMY_AND_PRICING_RULES,
   CULTIVATION_DETAIL_RULES,
-  STATUS_EFFECT_RULES
-].join('\n\n');
+  STATUS_EFFECT_RULES,
+].join('\n\n')
 
 // 合并文本格式规范
-const TEXT_FORMAT_RULES = [TEXT_FORMAT_MARKERS, DICE_ROLLING_RULES, COMBAT_DAMAGE_RULES, NAMING_CONVENTIONS].join('\n\n');
+const TEXT_FORMAT_RULES = [
+  TEXT_FORMAT_MARKERS,
+  DICE_ROLLING_RULES,
+  COMBAT_DAMAGE_RULES,
+  NAMING_CONVENTIONS,
+].join('\n\n')
 
 // 合并世界观标准
-const WORLD_STANDARDS = [REALM_ATTRIBUTE_STANDARDS, QUALITY_SYSTEM, REPUTATION_GUIDE].join('\n\n');
+const WORLD_STANDARDS = [REALM_ATTRIBUTE_STANDARDS, QUALITY_SYSTEM, REPUTATION_GUIDE].join('\n\n')
 
 export function getSystemPrompts(): Record<string, PromptDefinition> {
-  const tavernEnv = isTavernEnv();
+  const tavernEnv = isTavernEnv()
   return {
     // ==================== 核心请求提示词（合并版） ====================
     coreOutputRules: {
@@ -149,7 +178,7 @@ export function getSystemPrompts(): Record<string, PromptDefinition> {
       category: 'coreRequest',
       description: 'JSON格式、数据同步',
       order: 1,
-      weight: 10
+      weight: 10,
     },
     businessRules: {
       name: '2. 核心规则',
@@ -157,7 +186,7 @@ export function getSystemPrompts(): Record<string, PromptDefinition> {
       category: 'coreRequest',
       description: '境界、NPC、战斗规则',
       order: 2,
-      weight: 9
+      weight: 9,
     },
     playerPersonality: {
       name: '2.1 主角性格',
@@ -165,7 +194,7 @@ export function getSystemPrompts(): Record<string, PromptDefinition> {
       category: 'coreRequest',
       description: '默认“正常人”人设，可自定义',
       order: 2.1,
-      weight: 6
+      weight: 6,
     },
     extendedBusinessRules: {
       name: '2.5 扩展规则',
@@ -173,7 +202,7 @@ export function getSystemPrompts(): Record<string, PromptDefinition> {
       category: 'coreRequest',
       description: '大道、宗门等扩展',
       order: 2.5,
-      weight: 5
+      weight: 5,
     },
     dataDefinitions: {
       name: '3. 数据结构',
@@ -181,7 +210,7 @@ export function getSystemPrompts(): Record<string, PromptDefinition> {
       category: 'coreRequest',
       description: '存档结构定义',
       order: 3,
-      weight: 10
+      weight: 10,
     },
     textFormatRules: {
       name: '4. 文本格式',
@@ -189,7 +218,7 @@ export function getSystemPrompts(): Record<string, PromptDefinition> {
       category: 'coreRequest',
       description: '判定、伤害、命名',
       order: 4,
-      weight: 10
+      weight: 10,
     },
     worldStandards: {
       name: '5. 世界标准',
@@ -197,7 +226,7 @@ export function getSystemPrompts(): Record<string, PromptDefinition> {
       category: 'coreRequest',
       description: '境界属性、品质',
       order: 5,
-      weight: 7
+      weight: 7,
     },
     // ==================== 联机模式提示词 ====================
     onlineModeRules: {
@@ -211,7 +240,7 @@ export function getSystemPrompts(): Record<string, PromptDefinition> {
       description: '联机模式限制',
       order: 1,
       weight: 8,
-      condition: 'onlineMode'
+      condition: 'onlineMode',
     },
     onlineTravelContext: {
       name: '穿越场景理解',
@@ -326,7 +355,7 @@ export function getSystemPrompts(): Record<string, PromptDefinition> {
       description: '穿越场景理解与处理',
       order: 1.5,
       weight: 10,
-      condition: 'onlineMode'
+      condition: 'onlineMode',
     },
     onlineWorldSync: {
       name: '联机世界同步',
@@ -339,7 +368,7 @@ export function getSystemPrompts(): Record<string, PromptDefinition> {
       description: '世界同步机制',
       order: 2,
       weight: 7,
-      condition: 'onlineMode'
+      condition: 'onlineMode',
     },
     onlineInteraction: {
       name: '联机交互',
@@ -352,7 +381,7 @@ export function getSystemPrompts(): Record<string, PromptDefinition> {
       description: '玩家交互规则',
       order: 3,
       weight: 6,
-      condition: 'onlineMode'
+      condition: 'onlineMode',
     },
     onlineServerLogCommand: {
       name: '联机日志上报指令',
@@ -372,7 +401,7 @@ export function getSystemPrompts(): Record<string, PromptDefinition> {
       description: '让AI用指令上报联机日志',
       order: 3.5,
       weight: 6,
-      condition: 'onlineMode'
+      condition: 'onlineMode',
     },
     actionOptions: {
       name: '7. 行动选项',
@@ -380,7 +409,7 @@ export function getSystemPrompts(): Record<string, PromptDefinition> {
       category: 'coreRequest',
       description: '生成玩家选项',
       order: 7,
-      weight: 6
+      weight: 6,
     },
     eventSystemRules: {
       name: '8. 世界事件',
@@ -389,7 +418,7 @@ export function getSystemPrompts(): Record<string, PromptDefinition> {
       description: '世界事件演变与影响',
       order: 8,
       weight: 5,
-      condition: 'eventSystem'
+      condition: 'eventSystem',
     },
     splitGenerationStep1: {
       name: '9. 分步正文',
@@ -442,7 +471,7 @@ export function getSystemPrompts(): Record<string, PromptDefinition> {
       description: '分步模式第1步',
       order: 9,
       weight: 7,
-      condition: 'splitGeneration'
+      condition: 'splitGeneration',
     },
     splitGenerationStep2: {
       name: '10. 分步指令',
@@ -516,7 +545,7 @@ export function getSystemPrompts(): Record<string, PromptDefinition> {
       description: '分步模式第2步',
       order: 10,
       weight: 7,
-      condition: 'splitGeneration'
+      condition: 'splitGeneration',
     },
     splitInitStep1: {
       name: '11. 开局正文',
@@ -559,7 +588,7 @@ export function getSystemPrompts(): Record<string, PromptDefinition> {
       description: '开局分步第1步',
       order: 11,
       weight: 7,
-      condition: 'splitGeneration'
+      condition: 'splitGeneration',
     },
     splitInitStep2: {
       name: '12. 开局指令',
@@ -593,7 +622,7 @@ export function getSystemPrompts(): Record<string, PromptDefinition> {
       description: '开局分步第2步',
       order: 12,
       weight: 7,
-      condition: 'splitGeneration'
+      condition: 'splitGeneration',
     },
 
     // ==================== 总结请求提示词 ====================
@@ -604,7 +633,7 @@ export function getSystemPrompts(): Record<string, PromptDefinition> {
       category: 'summary',
       description: '中期→长期记忆',
       order: 1,
-      weight: 6
+      weight: 6,
     },
     npcMemorySummary: {
       name: 'NPC记忆总结',
@@ -613,7 +642,7 @@ export function getSystemPrompts(): Record<string, PromptDefinition> {
       category: 'summary',
       description: 'NPC记忆总结',
       order: 2,
-      weight: 5
+      weight: 5,
     },
 
     // ==================== 动态生成提示词 ====================
@@ -626,7 +655,7 @@ export function getSystemPrompts(): Record<string, PromptDefinition> {
       category: 'generation',
       description: '动态生成NPC',
       order: 1,
-      weight: 5
+      weight: 5,
     },
     eventGeneration: {
       name: '事件生成',
@@ -655,7 +684,7 @@ export function getSystemPrompts(): Record<string, PromptDefinition> {
       description: '动态生成世界事件',
       order: 2,
       weight: 5,
-      condition: 'eventSystem'
+      condition: 'eventSystem',
     },
     itemGeneration: {
       name: '物品生成',
@@ -664,7 +693,7 @@ export function getSystemPrompts(): Record<string, PromptDefinition> {
       category: 'generation',
       description: '动态生成物品',
       order: 3,
-      weight: 5
+      weight: 5,
     },
 
     // ==================== 开局初始化提示词 ====================
@@ -674,12 +703,12 @@ export function getSystemPrompts(): Record<string, PromptDefinition> {
         factionCount: 5,
         totalLocations: 10,
         secretRealms: 3,
-        continentCount: 3
+        continentCount: 3,
       }),
       category: 'initialization',
       description: '生成大陆、势力、地点',
       order: 1,
-      weight: 8
+      weight: 8,
     },
     characterInit: {
       name: '角色初始化',
@@ -687,7 +716,7 @@ export function getSystemPrompts(): Record<string, PromptDefinition> {
       category: 'initialization',
       description: '生成角色和开场',
       order: 2,
-      weight: 9
+      weight: 9,
     },
     newbieGuide: {
       name: '新手引导',
@@ -696,7 +725,7 @@ export function getSystemPrompts(): Record<string, PromptDefinition> {
       category: 'initialization',
       description: '自然新手引导',
       order: 3,
-      weight: 4
+      weight: 4,
     },
 
     // ==================== 文本优化提示词 ====================
@@ -737,9 +766,9 @@ export function getSystemPrompts(): Record<string, PromptDefinition> {
       category: 'summary',
       description: '丰富润色AI生成的文本',
       order: 3,
-      weight: 5
-    }
-  };
+      weight: 5,
+    },
+  }
 }
 
 /**
@@ -748,5 +777,14 @@ export function getSystemPrompts(): Record<string, PromptDefinition> {
  * @returns 提示词内容（用户自定义 > 默认）
  */
 export async function getPrompt(key: string): Promise<string> {
-  return await promptStorage.get(key);
+  return await promptStorage.get(key)
+}
+
+/**
+ * 获取提示词角色
+ * @param key 提示词键名
+ * @returns 角色（system/user/assistant），默认 system
+ */
+export async function getPromptRole(key: string): Promise<'system' | 'user' | 'assistant'> {
+  return await promptStorage.getRole(key)
 }

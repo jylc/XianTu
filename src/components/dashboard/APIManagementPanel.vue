@@ -649,6 +649,7 @@ import { vectorMemoryService } from '@/services/vectorMemoryService';
 import { getNsfwSettingsFromStorage, type NsfwGenderFilter } from '@/utils/nsfw';
 import { isTavernEnv } from '@/utils/tavern';
 import { toast } from '@/utils/toast';
+import { promptStorage } from '@/services/prompts/promptStorage';
 import { useI18n } from '@/i18n';
 
 const { t } = useI18n();
@@ -714,10 +715,12 @@ const loadLocalSettings = () => {
   }
 };
 
-const saveSplitResponseSetting = () => {
+const saveSplitResponseSetting = async () => {
   saveGameSettings({
     splitResponseGeneration: splitResponseGeneration.value,
   });
+  await promptStorage.syncEnabledToSplitMode(splitResponseGeneration.value);
+  window.dispatchEvent(new StorageEvent('storage', { key: 'dad_game_settings' }));
 };
 
 const saveNsfwSettings = () => {

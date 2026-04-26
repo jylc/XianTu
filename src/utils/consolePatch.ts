@@ -32,20 +32,36 @@ const original = {
 const canConsoleDebug = () => debugLogger.isConsoleDebugEnabled();
 const isDebugMode = () => debugLogger.isDebugMode();
 
+/**
+ * 将所有参数拼接为可读的 message 文本
+ * 原始类型直接拼接，对象/数组序列化为 JSON
+ */
+function argsToMessage(args: any[], fallback: string): string {
+  return args
+    .filter(a => a !== null && a !== undefined)
+    .map(a => {
+      if (typeof a === 'object') {
+        try { return JSON.stringify(a); } catch { return String(a); }
+      }
+      return String(a);
+    })
+    .join(' ') || fallback;
+}
+
 // Patch non-error outputs
 console.log = ((...args: any[]) => {
   if (canConsoleDebug()) original.log(...args);
-  if (canConsoleDebug()) appendLog('log', 'console', args.map(a => typeof a === 'string' ? a : '').filter(Boolean).join(' ') || 'console.log', args.length === 1 ? args[0] : args);
+  if (canConsoleDebug()) appendLog('log', 'console', argsToMessage(args, 'console.log'));
 }) as ConsoleMethod;
 
 console.warn = ((...args: any[]) => {
   if (canConsoleDebug()) original.warn(...args);
-  if (canConsoleDebug()) appendLog('warn', 'console', args.map(a => typeof a === 'string' ? a : '').filter(Boolean).join(' ') || 'console.warn', args.length === 1 ? args[0] : args);
+  if (canConsoleDebug()) appendLog('warn', 'console', argsToMessage(args, 'console.warn'));
 }) as ConsoleMethod;
 
 console.info = ((...args: any[]) => {
   if (isDebugMode()) original.info(...args);
-  if (isDebugMode()) appendLog('info', 'console', args.map(a => typeof a === 'string' ? a : '').filter(Boolean).join(' ') || 'console.info', args.length === 1 ? args[0] : args);
+  if (isDebugMode()) appendLog('info', 'console', argsToMessage(args, 'console.info'));
 }) as ConsoleMethod;
 
 if (original.debug) {
@@ -81,6 +97,6 @@ if (original.groupEnd) {
 // console.error: 始终显示在控制台，同时在调试模式下写入日志
 console.error = ((...args: any[]) => {
   original.error(...args); // 始终显示，不屏蔽
-  if (isDebugMode()) appendLog('error', 'console', args.map(a => typeof a === 'string' ? a : '').filter(Boolean).join(' ') || 'console.error', args.length === 1 ? args[0] : args);
+  if (isDebugMode()) appendLog('error', 'console', argsToMessage(args, 'console.error'));
 }) as ConsoleMethod;
 

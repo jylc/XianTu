@@ -12,6 +12,9 @@
         <button class="tool-btn" @click="showConfig = !showConfig">
           {{ showConfig ? '隐藏配置' : '事件配置' }}
         </button>
+        <button v-if="events.length > 0" class="tool-btn" @click="toggleDisplayMode" :title="displayMode === 'list' ? '切换为流程图' : '切换为事件列表'">
+          {{ displayMode === 'list' ? '流程图' : '列表' }}
+        </button>
       </div>
     </div>
 
@@ -199,70 +202,100 @@
       </div>
     </div>
 
-    <!-- 调试信息 -->
-    <div v-if="showConfig" class="debug-section">
-      <div class="group-title">调试信息</div>
-      <div class="debug-item">
-        <span>事件记录数量:</span>
-        <span>{{ events.length }}</span>
-      </div>
-      <div class="debug-item">
-        <span>下次事件时间:</span>
-        <span>{{ nextEventText || '未设置' }}</span>
-      </div>
-      <div class="debug-item">
-        <span>事件系统启用:</span>
-        <span>{{ config.enabled ? '是' : '否' }}</span>
-      </div>
-      <div class="debug-item">
-        <span>Store eventSystem:</span>
-        <span>{{ eventSystem ? '已初始化' : '未初始化' }}</span>
-      </div>
-    </div>
-
-    <!-- 空状态 -->
-    <div v-if="events.length === 0" class="event-list">
-      <div class="empty-state">
+    <!-- 事件列表视图 -->
+    <div v-if="displayMode === 'list'" class="event-list">
+      <div v-if="events.length === 0" class="empty-state">
         <div class="empty-title">暂无事件记录</div>
         <div class="empty-hint">事件会随游戏时间推进自动发生。</div>
       </div>
+
+      <div v-else class="events">
+        <div v-for="e in events" :key="e.事件ID" class="event-item">
+          <div class="event-header">
+            <span class="event-type">{{ e.事件类型 }}</span>
+            <span class="event-name">{{ e.事件名称 }}</span>
+            <span class="event-time">{{ formatGameTime(e.发生时间) }}</span>
+            <div class="event-actions">
+              <button class="icon-btn event-delete-btn" title="删除" @click="deleteEventById(e.事件ID)">🗑️</button>
+            </div>
+          </div>
+          <!-- 事件元信息 -->
+          <div class="event-meta">
+            <span v-if="e.影响等级" class="meta-tag" :class="'level-' + e.影响等级">{{ e.影响等级 }}</span>
+            <span v-if="e.影响范围" class="meta-tag scope">{{ e.影响范围 }}</span>
+            <span v-if="e.事件来源" class="meta-tag source">{{ e.事件来源 }}</span>
+          </div>
+          <!-- 相关人物/势力 -->
+          <div v-if="(e.相关人物 && e.相关人物.length) || (e.相关势力 && e.相关势力.length)" class="event-relations">
+            <span v-if="e.相关人物 && e.相关人物.length" class="relation-group">
+              <span class="relation-label">相关人物:</span>
+              <span v-for="(person, idx) in e.相关人物" :key="idx" class="relation-item person">{{ person }}</span>
+            </span>
+            <span v-if="e.相关势力 && e.相关势力.length" class="relation-group">
+              <span class="relation-label">相关势力:</span>
+              <span v-for="(faction, idx) in e.相关势力" :key="idx" class="relation-item faction">{{ faction }}</span>
+            </span>
+          </div>
+          <div class="event-desc">{{ e.事件描述 }}</div>
+        </div>
+      </div>
     </div>
 
-    <!-- Vue Flow 事件流图 -->
-    <div v-else class="event-flow-container">
-      <VueFlow
-        :key="events.length"
-        :nodes="flowNodes"
-        :edges="flowEdges"
-        :node-types="nodeTypes"
-        :default-viewport="{ x: 0, y: 0, zoom: 1 }"
-        :fit-view-on-init="true"
-        :min-zoom="0.3"
-        :max-zoom="2"
-        :nodes-draggable="false"
-        :nodes-connectable="false"
-        :elements-selectable="false"
-        :pan-on-drag="true"
-        :zoom-on-scroll="true"
-        class="event-flow"
-      >
-        <Background :gap="20" :size="1" />
-      </VueFlow>
+    <!-- 流程图视图 -->
+    <div v-else class="flow-container">
+      <div class="flow-wrapper">
+        <VueFlow
+          v-model:nodes="flowNodes"
+          v-model:edges="flowEdges"
+          :node-types="nodeTypes"
+          :fit-view-on-init="true"
+          :default-viewport="{ zoom: 0.8, x: 0, y: 0 }"
+          :min-zoom="0.2"
+          :max-zoom="2"
+          @node-click="onFlowNodeClick"
+        >
+          <template #node-eventNode="nodeProps">
+            <EventFlowNode
+              :data="nodeProps.data"
+              @click="onFlowNodeClick($event)"
+              @delete="deleteEventById"
+            />
+          </template>
+          <Background :gap="20" :size="1" />
+          <Controls position="bottom-right" />
+          <MiniMap position="bottom-left" />
+        </VueFlow>
+      </div>
     </div>
+
+    <!-- 事件详情弹窗 -->
+    <EventDetailPopover
+      :visible="showDetailPopover"
+      :event="selectedFlowEvent"
+      @close="showDetailPopover = false"
+      @delete="onDetailDelete"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, reactive, ref, onMounted, markRaw } from 'vue';
+import { VueFlow } from '@vue-flow/core';
+import { Background } from '@vue-flow/background';
+import { Controls } from '@vue-flow/controls';
+import { MiniMap } from '@vue-flow/minimap';
+import '@vue-flow/core/dist/style.css';
+import '@vue-flow/core/dist/theme-default.css';
+import '@vue-flow/controls/dist/style.css';
+import '@vue-flow/minimap/dist/style.css';
 import { useGameStateStore } from '@/stores/gameStateStore';
 import { useCharacterStore } from '@/stores/characterStore';
 import type { EventSystem, GameEvent, GameTime, CustomEventTemplate } from '@/types/game';
-import { toast } from '@/utils/toast';
-import { VueFlow } from '@vue-flow/core';
-import { Background } from '@vue-flow/background';
+import type { EventFlowNodeData } from '@/types/eventFlow';
+import { transformEventsToFlow, getFitViewPadding } from '@/utils/eventFlowTransformer';
 import EventFlowNode from './components/EventFlowNode.vue';
-import '@vue-flow/core/dist/style.css';
-import '@vue-flow/core/dist/theme-default.css';
+import EventDetailPopover from './components/EventDetailPopover.vue';
+import { toast } from '@/utils/toast';
 
 const gameStateStore = useGameStateStore();
 const characterStore = useCharacterStore();
@@ -271,16 +304,21 @@ const showConfig = ref(false);
 const showAddCustomEvent = ref(false);
 const editingEventIndex = ref<number | null>(null);
 
+// 显示模式: 'list' 列表 | 'flow' 流程图
+const displayMode = ref<'list' | 'flow'>('list');
+
+// 流程图相关状态
+const showDetailPopover = ref(false);
+const selectedFlowEvent = ref<EventFlowNodeData | null>(null);
+
+const nodeTypes = {
+  eventNode: markRaw(EventFlowNode),
+};
+
 const eventSystem = computed<EventSystem>(() => gameStateStore.eventSystem);
 
 const events = computed<GameEvent[]>(() => {
   const list = (eventSystem.value?.事件记录 || []) as GameEvent[];
-  const nextTime = eventSystem.value?.下次事件时间;
-  console.log('[EventPanel] 事件系统状态:', {
-    事件记录数量: list.length,
-    下次事件时间: nextTime,
-    配置: eventSystem.value?.配置,
-  });
   return [...list].slice().reverse();
 });
 
@@ -290,48 +328,33 @@ const nextEventText = computed(() => {
   return formatGameTime(t);
 });
 
-// Vue Flow 配置 - 使用 markRaw 防止响应式追踪
-const nodeTypes = markRaw({ eventNode: EventFlowNode });
-
-const NODE_SPACING = 220;
-
-const flowNodes = computed(() => {
-  const nodes = events.value.map((e, index) => ({
-    id: `event-${e.事件ID}`,
-    type: 'eventNode' as const,
-    position: { x: 0, y: index * NODE_SPACING },
-    data: {
-      事件ID: e.事件ID,
-      事件名称: e.事件名称,
-      事件类型: e.事件类型,
-      事件描述: e.事件描述,
-      影响等级: e.影响等级,
-      影响范围: e.影响范围,
-      相关人物: e.相关人物,
-      相关势力: e.相关势力,
-      事件来源: e.事件来源,
-      formattedTime: formatGameTime(e.发生时间),
-      onDelete: () => deleteEventById(e.事件ID),
-    },
-  }));
-  console.log('[EventPanel] flowNodes:', nodes.length, nodes);
-  return nodes;
+// 流程图节点和边
+const flowResult = computed(() => {
+  const list = (eventSystem.value?.事件记录 || []) as GameEvent[];
+  return transformEventsToFlow(list);
 });
+const flowNodes = computed(() => flowResult.value.nodes);
+const flowEdges = computed(() => flowResult.value.edges);
 
-const flowEdges = computed(() => {
-  const list = events.value;
-  const edges: { id: string; source: string; target: string; type: string; style: Record<string, string> }[] = [];
-  for (let i = 0; i < list.length - 1; i++) {
-    edges.push({
-      id: `edge-${list[i].事件ID}-${list[i + 1].事件ID}`,
-      source: `event-${list[i].事件ID}`,
-      target: `event-${list[i + 1].事件ID}`,
-      type: 'smoothstep',
-      style: { stroke: 'var(--color-border-hover)' },
-    });
+// 切换显示模式
+function toggleDisplayMode() {
+  displayMode.value = displayMode.value === 'list' ? 'flow' : 'list';
+}
+
+// 流程图节点点击 → 显示详情弹窗
+function onFlowNodeClick(event: any) {
+  const data = event?.data || event;
+  if (data && data.eventId) {
+    selectedFlowEvent.value = data as EventFlowNodeData;
+    showDetailPopover.value = true;
   }
-  return edges;
-});
+}
+
+// 详情弹窗删除事件
+async function onDetailDelete(eventId: string) {
+  showDetailPopover.value = false;
+  await deleteEventById(eventId);
+}
 
 // 配置对象
 const config = reactive({
@@ -534,7 +557,8 @@ const deleteEventById = async (eventId: string) => {
   }
 };
 
-function formatGameTime(time: GameTime): string {
+function formatGameTime(time: GameTime | undefined): string {
+  if (!time) return '未知时间';
   const hh = String(time.小时 ?? 0).padStart(2, '0');
   const mm = String(time.分钟 ?? 0).padStart(2, '0');
   return `${time.年}年${time.月}月${time.日}日 ${hh}:${mm}`;
@@ -1117,76 +1141,157 @@ input:checked + .toggle-slider:before {
   font-size: 0.9rem;
 }
 
-/* 调试区域 */
-.debug-section {
+.event-item {
   padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
   background: var(--color-surface);
-  border: 1px dashed var(--color-border);
-  border-radius: 8px;
-  margin: 12px;
+  margin-bottom: 10px;
 }
 
-.debug-item {
+.event-header {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  gap: 10px;
+  align-items: baseline;
+  margin-bottom: 8px;
+}
+
+.event-actions {
   display: flex;
-  justify-content: space-between;
-  padding: 4px 0;
-  font-size: 0.85rem;
+  justify-content: flex-end;
+}
+
+.event-delete-btn {
   color: var(--color-text-secondary);
 }
 
-.debug-item span:last-child {
+.event-delete-btn:hover {
+  color: var(--color-error);
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.event-type {
+  font-size: 0.78rem;
+  color: var(--color-primary);
+  border: 1px solid rgba(var(--color-primary-rgb), 0.35);
+  padding: 2px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.event-name {
+  font-weight: 700;
   color: var(--color-text);
-  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-/* Vue Flow 容器 */
-.event-flow-container {
-  flex: 1;
-  min-height: 400px;
-  height: 100%;
-  position: relative;
+.event-time {
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.event-desc {
+  color: var(--color-text);
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+/* 事件元信息 */
+.event-meta {
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
 }
 
-.event-flow {
+.meta-tag {
+  font-size: 0.75rem;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--color-surface-light);
+  color: var(--color-text-secondary);
+}
+
+.meta-tag.level-轻微 {
+  background: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
+}
+
+.meta-tag.level-中等 {
+  background: rgba(234, 179, 8, 0.15);
+  color: #eab308;
+}
+
+.meta-tag.level-重大 {
+  background: rgba(249, 115, 22, 0.15);
+  color: #f97316;
+}
+
+.meta-tag.level-灾难 {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+}
+
+.meta-tag.scope {
+  background: rgba(59, 130, 246, 0.12);
+  color: #3b82f6;
+}
+
+.meta-tag.source {
+  background: rgba(139, 92, 246, 0.12);
+  color: #8b5cf6;
+}
+
+/* 相关人物/势力 */
+.event-relations {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 8px;
+  font-size: 0.82rem;
+}
+
+.relation-group {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.relation-label {
+  color: var(--color-text-secondary);
+}
+
+.relation-item {
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 0.78rem;
+}
+
+.relation-item.person {
+  background: rgba(236, 72, 153, 0.12);
+  color: #ec4899;
+}
+
+.relation-item.faction {
+  background: rgba(20, 184, 166, 0.12);
+  color: #14b8a6;
+}
+
+/* 流程图视图 */
+.flow-container {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.flow-wrapper {
   width: 100%;
   height: 100%;
   min-height: 400px;
-  background: transparent;
-  flex: 1;
-}
-
-.event-flow :deep(.vue-flow) {
-  width: 100%;
-  height: 100%;
-}
-
-.event-flow :deep(.vue-flow__viewport) {
-  width: 100%;
-  height: 100%;
-}
-
-.event-flow :deep(.vue-flow__transformationpane) {
-  width: 100%;
-  height: 100%;
-}
-
-.event-flow :deep(.vue-flow__background) {
-  background: transparent;
-}
-
-.event-flow :deep(.vue-flow__node-eventNode) {
-  padding: 0;
-}
-
-.event-flow :deep(.vue-flow__edge-path) {
-  stroke: var(--color-border-hover);
-  stroke-width: 2;
-}
-
-.event-flow :deep(.vue-flow__minimap) {
-  border-radius: 8px;
-  border: 1px solid var(--color-border);
 }
 </style>
