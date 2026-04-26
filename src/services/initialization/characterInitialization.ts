@@ -242,7 +242,7 @@ function prepareInitialData(baseInfo: CharacterBaseInfo, age: number): { saveDat
     位置: location as any,
     效果: [],
     // 🔥 时间：使用age作为初始年份，AI可以通过tavern_commands修改
-    时间: { 年: age, 月: 1, 日: 1, 小时: Math.floor(Math.random() * 12) + 6, 分钟: Math.floor(Math.random() * 60) },
+    // 🔥 时间：使用固定开局年份1000，    时间: { 年: 1000, 月: 1, 日: 1, 小时: 8, 分钟: 0 },
     背包: { 灵石: { 下品: 0, 中品: 0, 上品: 0, 极品: 0 }, 物品: {} },
     装备: { 装备1: null, 装备2: null, 装备3: null, 装备4: null, 装备5: null, 装备6: null },
     功法: {
@@ -280,6 +280,8 @@ function prepareInitialData(baseInfo: CharacterBaseInfo, age: number): { saveDat
         '⚠️ 先创建后修改：修改数据前必须确保数据已存在',
         '装备字段：装备1-6'
       ],
+      // 🔥 开局时间：用于计算角色寿命
+      开局时间: { 年: 1, 月: 1, 日: 1, 小时: 8, 分钟: 0 },
       ...(tavernEnv ? {
         // 🔥 NSFW设置：从localStorage读取用户设置
         ...getNsfwSettingsFromStorage()
